@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VoteData {
@@ -77,7 +78,10 @@ async fn resolve_creator_names(api_key: &str, steam_ids: &[String]) -> HashMap<S
         return map;
     }
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
     // Steam API supports up to 100 IDs per call
     let ids_csv = steam_ids.join(",");
     let resp = client
@@ -107,7 +111,10 @@ pub async fn search_mods(
     days: u32,
     required_tags: Vec<String>,
 ) -> Result<QueryResponse, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
 
     let mut params: Vec<(&str, String)> = vec![
         ("key", api_key.to_string()),
@@ -134,15 +141,7 @@ pub async fn search_mods(
     params.push(("cursor", cursor_param.to_string()));
 
     // Add tags
-    for (i, tag) in required_tags.iter().enumerate() {
-        // Steam API expects requiredtags[0], requiredtags[1], etc.
-        // OR it might accept comma separated? Docs say "requiredtags" is an array.
-        // reqwest query params with same key?
-        // Let's try passing multiple "requiredtags" keys first, but usually in Steam API it's specific.
-        // Actually, IPublishedFileService/QueryFiles/v1 docs say:
-        // requiredtags (string) "Tags to require on the returned items." -> "Comma separated list".
-        // Let's try comma separated first.
-    }
+    // Loop removed. required_tags are handled by params.push(("requiredtags", ...)) below.
     if !required_tags.is_empty() {
          // Some sources say `requiredtags` is comma separated.
          // Others say it supports multiple keys.
@@ -160,12 +159,26 @@ pub async fn search_mods(
          params.push(("requiredtags", required_tags.join(",")));
     }
 
-    let resp = client
-        .get("https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/")
-        .query(&params)
-        .send()
-        .await
-        .map_err(|e| format!("HTTP request failed: {}", e))?;
+    // Retry up to 2 times for transient network errors
+    let mut last_err = String::new();
+    let mut resp = None;
+    for attempt in 0..3 {
+        match client
+            .get("https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/")
+            .query(&params)
+            .send()
+            .await
+        {
+            Ok(r) => { resp = Some(r); break; }
+            Err(e) => {
+                last_err = format!("HTTP request failed: {}", e);
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+    let resp = resp.ok_or(last_err)?;
 
     if !resp.status().is_success() {
         return Err(format!("Steam API returned status {}", resp.status()));
@@ -318,22 +331,40 @@ pub async fn get_mod_details_cmd(
         config.steam_api_key.clone()
     };
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get("https://api.steampowered.com/IPublishedFileService/GetDetails/v1/")
-        .query(&[
-            ("key", api_key.as_str()),
-            ("includevotes", "true"),
-            ("includetags", "true"),
-            ("includeadditionalpreviews", "true"),
-            ("includemetadata", "true"),
-            ("return_playtime_stats", "0"),
-            ("strip_description_bbcode", "true"),
-        ])
-        .query(&[("publishedfileids[0]", &published_file_id)])
-        .send()
-        .await
-        .map_err(|e| format!("HTTP request failed: {}", e))?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    // Retry up to 2 times for transient network errors
+    let mut last_err = String::new();
+    let mut resp = None;
+    for attempt in 0..3 {
+        match client
+            .get("https://api.steampowered.com/IPublishedFileService/GetDetails/v1/")
+            .query(&[
+                ("key", api_key.as_str()),
+                ("includevotes", "true"),
+                ("includetags", "true"),
+                ("includeadditionalpreviews", "true"),
+                ("includemetadata", "true"),
+                ("return_playtime_stats", "0"),
+                ("strip_description_bbcode", "true"),
+            ])
+            .query(&[("publishedfileids[0]", &published_file_id)])
+            .send()
+            .await
+        {
+            Ok(r) => { resp = Some(r); break; }
+            Err(e) => {
+                last_err = format!("HTTP request failed: {}", e);
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+    let resp = resp.ok_or(last_err)?;
 
     if !resp.status().is_success() {
         return Err(format!("Steam API returned status {}", resp.status()));

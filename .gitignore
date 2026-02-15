@@ -28,4 +28,6 @@ Thumbs.db
 
 # Sensitive
 /src-tauri/tauri.key
+/src-tauri/tauri.key.pub
+/src-tauri/tauri.key.backup
 build_release.ps1

@@ -1,0 +1,5 @@
+error: unexpected argument 'Mod' found
+
+Usage: cargo tauri signer sign [OPTIONS] <FILE>
+
+For more information, try '--help'.

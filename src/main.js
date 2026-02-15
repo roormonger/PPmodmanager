@@ -366,7 +366,12 @@ function renderMods() {
     const grid = document.getElementById("mods-grid");
     grid.innerHTML = "";
 
-    currentMods.forEach((mod) => {
+    // Filter out installed mods from browse results
+    const browseMods = currentMods.filter(mod =>
+        !installedModsCache.some(m => m.ugc_id === mod.publishedfileid)
+    );
+
+    browseMods.forEach((mod) => {
         const card = document.createElement("div");
         card.className = "mod-card";
         const date = mod.time_updated
@@ -384,11 +389,6 @@ function renderMods() {
 
         const author = mod.creator_name || "";
 
-        const isInstalled = installedModsCache.some(m => m.ugc_id === mod.publishedfileid);
-        const btnText = isInstalled ? "Installed" : "Install";
-        const btnClass = isInstalled ? "install-btn installed" : "install-btn";
-        const btnDisabled = isInstalled ? "disabled" : "";
-
         card.innerHTML = `
             <img class="mod-card-img" src="${imgSrc}" alt="${escapeHtml(mod.title)}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'" />
             <div class="mod-card-body">
@@ -397,7 +397,7 @@ function renderMods() {
                 ${author ? `<div class="mod-card-author">by ${escapeHtml(author)}</div>` : ""}
             </div>
             <div class="mod-card-footer">
-                <button class="${btnClass}" ${btnDisabled} onclick="event.stopPropagation(); installMod('${mod.publishedfileid}', '${escapeHtml(mod.title).replace(/'/g, "\\'")}'  , this)">${btnText}</button>
+                <button class="install-btn" onclick="event.stopPropagation(); installMod('${mod.publishedfileid}', '${escapeHtml(mod.title).replace(/'/g, "\\'")}'  , this)">Install</button>
             </div>
         `;
         card.style.cursor = "pointer";
