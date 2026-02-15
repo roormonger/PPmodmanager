@@ -142,6 +142,16 @@
                             Path to the Mods folder inside your People Playground install.
                             Required for downloading mods.
                         </p>
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Application Logs</label>
+                        <div id="settings-logs" class="logs-container"></div>
+                        <div style="display:flex;gap:10px;">
+                            <button class="btn-secondary" onclick="copyLogs()">Copy to Clipboard</button>
+                            <button class="btn-secondary" onclick="clearLogs()">Clear Logs</button>
+                        </div>
                     </div>
 
                     <button class="btn-primary" onclick="saveSettings()">Save Settings</button>

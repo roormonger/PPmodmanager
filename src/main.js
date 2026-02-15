@@ -21,6 +21,10 @@ function switchTab(tab) {
     if (tab === "installed") {
         loadInstalledMods();
     }
+    // Render logs if settings
+    if (tab === "settings") {
+        renderLogs();
+    }
 }
 
 // ── Alert Helpers ───────────────────────────────
@@ -28,11 +32,57 @@ function showAlert(containerId, message, type = "error") {
     const el = document.getElementById(containerId);
     el.className = `alert ${type}`;
     el.textContent = message;
+    addLog(`[Alert] ${message}`, type);
 }
 
 function hideAlert(containerId) {
     const el = document.getElementById(containerId);
     el.className = "alert hidden";
+}
+
+// ── Logs ────────────────────────────────────────
+let appLogs = [];
+
+function addLog(msg, type = "info") {
+    const ts = new Date().toLocaleTimeString();
+    appLogs.push({ ts, msg, type });
+    // Keep last 100
+    if (appLogs.length > 100) appLogs.shift();
+    // If settings tab is active, render immediately
+    if (document.getElementById("tab-settings").classList.contains("active")) {
+        renderLogs();
+    }
+}
+
+function renderLogs() {
+    const container = document.getElementById("settings-logs");
+    if (!container) return;
+
+    if (appLogs.length === 0) {
+        container.innerHTML = "No logs.";
+        return;
+    }
+
+    container.innerHTML = appLogs.map(l =>
+        `<div class="log-entry ${l.type}">` +
+        `<span class="log-timestamp">[${l.ts}]</span>` +
+        `<span>${escapeHtml(l.msg)}</span>` +
+        `</div>`
+    ).join("");
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+function copyLogs() {
+    const text = appLogs.map(l => `[${l.ts}] [${l.type}] ${l.msg}`).join("\n");
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Logs copied to clipboard");
+    }).catch(err => console.error("Failed to copy", err));
+}
+
+function clearLogs() {
+    appLogs = [];
+    renderLogs();
 }
 
 // ── Settings ────────────────────────────────────
@@ -124,6 +174,11 @@ function renderMods() {
 
         const author = mod.creator_name || "";
 
+        const isInstalled = installedModsCache.some(m => m.ugc_id === mod.publishedfileid);
+        const btnText = isInstalled ? "Installed" : "Install";
+        const btnClass = isInstalled ? "install-btn installed" : "install-btn";
+        const btnDisabled = isInstalled ? "disabled" : "";
+
         card.innerHTML = `
             <img class="mod-card-img" src="${imgSrc}" alt="${escapeHtml(mod.title)}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'" />
             <div class="mod-card-body">
@@ -132,7 +187,7 @@ function renderMods() {
                 ${author ? `<div class="mod-card-author">by ${escapeHtml(author)}</div>` : ""}
             </div>
             <div class="mod-card-footer">
-                <button class="install-btn" onclick="event.stopPropagation(); installMod('${mod.publishedfileid}', '${escapeHtml(mod.title).replace(/'/g, "\\'")}'  , this)">Install</button>
+                <button class="${btnClass}" ${btnDisabled} onclick="event.stopPropagation(); installMod('${mod.publishedfileid}', '${escapeHtml(mod.title).replace(/'/g, "\\'")}'  , this)">${btnText}</button>
             </div>
         `;
         card.style.cursor = "pointer";
@@ -140,10 +195,12 @@ function renderMods() {
         grid.appendChild(card);
     });
 
-    // Show/hide load more
+    // Show/hide load more / infinite scroll trigger
     const loadMoreEl = document.getElementById("load-more-container");
     if (nextCursor) {
         loadMoreEl.classList.remove("hidden");
+        // Re-observe if we have a cursor
+        if (observer) observer.observe(loadMoreEl);
     } else {
         loadMoreEl.classList.add("hidden");
     }
@@ -153,8 +210,30 @@ function loadMore() {
     if (nextCursor) searchMods(nextCursor);
 }
 
+// ── Infinite Scroll Observer ────────────────────
+let observer;
+function setupInfiniteScroll() {
+    const options = {
+        root: null, // viewport
+        rootMargin: "0px",
+        threshold: 0.1,
+    };
+
+    observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (entry.isIntersecting && nextCursor) {
+                loadMore();
+            }
+        });
+    }, options);
+
+    const target = document.getElementById("load-more-container");
+    if (target) observer.observe(target);
+}
+
 // ── Toast Notifications ─────────────────────────
 function createToast(id, type, title, msg) {
+    addLog(`[Toast] ${title}: ${msg}`, type);
     const container = document.getElementById("toast-container");
     // Remove existing toast with same id
     const existing = document.getElementById(`toast-${id}`);
@@ -470,9 +549,21 @@ function renderModDetail(mod) {
     // Install button
     const installBtn = document.getElementById("detail-install-btn");
     const title = mod.title || "Mod";
+
+    // Check installed
+    const isInstalled = installedModsCache.some(m => m.ugc_id === mod.publishedfileid);
+
     installBtn.onclick = () => installMod(mod.publishedfileid, title, installBtn);
-    installBtn.textContent = "Install Mod";
-    installBtn.disabled = false;
+
+    if (isInstalled) {
+        installBtn.textContent = "Installed";
+        installBtn.classList.add("installed");
+        installBtn.disabled = true;
+    } else {
+        installBtn.textContent = "Install Mod";
+        installBtn.classList.remove("installed");
+        installBtn.disabled = false;
+    }
 
     // Workshop link
     const link = document.getElementById("detail-workshop-link");
@@ -510,8 +601,10 @@ document.getElementById("search-input").addEventListener("keydown", (e) => {
 });
 
 // ── Init ────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     loadSettings();
+    await loadInstalledMods();
+    setupInfiniteScroll();
     searchMods();
 });
 

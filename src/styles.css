@@ -372,6 +372,8 @@ input[type=range]::-webkit-slider-thumb:hover {
     overflow: hidden;
     transition: all var(--transition);
     cursor: default;
+    display: flex;
+    flex-direction: column;
 }
 
 .mod-card:hover {
@@ -390,6 +392,9 @@ input[type=range]::-webkit-slider-thumb:hover {
 
 .mod-card-body {
     padding: 10px 14px 4px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .mod-card-stars {
@@ -999,6 +1004,7 @@ input[type=range]::-webkit-slider-thumb:hover {
     border: 1px solid rgba(255, 255, 255, 0.1);
     cursor: pointer;
     transition: transform 0.2s, opacity 0.2s;
+    pointer-events: auto;
 }
 
 .toast:hover {
@@ -1115,4 +1121,50 @@ input[type=range]::-webkit-slider-thumb:hover {
     50% {
         opacity: 1;
     }
+}
+
+/* Installed State */
+.install-btn.installed,
+.detail-install-btn.installed {
+    background: #4caf50;
+    color: white;
+    cursor: default;
+    opacity: 0.8;
+    pointer-events: none;
+}
+
+/* ── Logs ────────────────────────────────────── */
+.logs-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    height: 200px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.log-entry {
+    /* Space between logs */
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 4px;
+}
+
+.log-entry.error {
+    color: var(--error);
+}
+
+.log-entry.success {
+    color: var(--success);
+}
+
+.log-timestamp {
+    color: var(--text-muted);
+    margin-right: 8px;
 }

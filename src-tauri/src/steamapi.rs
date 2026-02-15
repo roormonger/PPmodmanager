@@ -188,7 +188,7 @@ pub async fn search_mods_cmd(
         config.steam_api_key.clone()
     };
 
-    search_mods(&api_key, &query, &cursor, 20, sort_type.unwrap_or(3), days.unwrap_or(7)).await
+    search_mods(&api_key, &query, &cursor, 50, sort_type.unwrap_or(3), days.unwrap_or(7)).await
 }
 
 // ── Mod Detail ──────────────────────────────────

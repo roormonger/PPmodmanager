@@ -3,6 +3,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 /// Get the steamcmd install directory (%APPDATA%\PPModManager\steamcmd)
 fn steamcmd_dir() -> PathBuf {
     crate::config::app_data_dir().join("steamcmd")
@@ -73,7 +76,11 @@ pub fn download_workshop_item(app_id: &str, workshop_id: &str) -> Result<String,
 
     println!("Downloading workshop item {} for app {}...", workshop_id, app_id);
 
-    let output = Command::new(&exe)
+    let mut cmd = Command::new(&exe);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let output = cmd
         .current_dir(&dir)
         .args([
             "+login",
@@ -81,6 +88,7 @@ pub fn download_workshop_item(app_id: &str, workshop_id: &str) -> Result<String,
             "+workshop_download_item",
             app_id,
             workshop_id,
+            "validate", // Force validation to fix "File Not Found" errors
             "+quit",
         ])
         .output()
@@ -107,7 +115,8 @@ pub fn download_workshop_item(app_id: &str, workshop_id: &str) -> Result<String,
         Ok(download_path.to_string_lossy().to_string())
     } else {
         Err(format!(
-            "Download verification failed: {:?} not found.\nSteamCMD output:\n{}",
+            "Download verification failed: {:?} not found.\n\
+            SteamCMD output:\n{}",
             download_path, stdout
         ))
     }
@@ -128,7 +137,33 @@ pub async fn install_mod(
     let workshop_id_for_move = workshop_id.clone();
     let app_id = "1118200"; // People Playground
     let download_path = tokio::task::spawn_blocking(move || {
-        download_workshop_item(app_id, &workshop_id)
+        // Try first attempt
+        match download_workshop_item(app_id, &workshop_id) {
+            Ok(path) => Ok(path),
+            Err(e) => {
+                println!("First download attempt failed: {}. Cleaning cache and retrying...", e);
+                // Clean cache and target
+                let dir = steamcmd_dir();
+                // 1. cleanup downloads staging
+                let staging = dir.join("steamapps").join("workshop").join("downloads").join(app_id);
+                if staging.exists() {
+                    let _ = fs::remove_dir_all(&staging);
+                }
+                // 2. cleanup content target
+                let content = dir.join("steamapps").join("workshop").join("content").join(app_id).join(&workshop_id);
+                if content.exists() {
+                    let _ = fs::remove_dir_all(&content);
+                }
+                // 3. cleanup ACF file (force re-index)
+                let acf = dir.join("steamapps").join("workshop").join(format!("appworkshop_{}.acf", app_id));
+                if acf.exists() {
+                    let _ = fs::remove_file(&acf);
+                }
+                
+                // Retry
+                download_workshop_item(app_id, &workshop_id)
+            }
+        }
     })
     .await
     .map_err(|e| format!("Task error: {}", e))??;
