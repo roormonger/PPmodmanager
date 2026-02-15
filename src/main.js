@@ -802,6 +802,11 @@ function selectMedia(index, allMedia) {
 }
 
 function closeDetail() {
+    // Stop any playing YouTube iframes
+    document.querySelectorAll("#detail-media-main iframe").forEach(iframe => {
+        iframe.src = "";
+    });
+
     document.querySelectorAll(".tab-content").forEach(s => s.classList.remove("active"));
     document.getElementById(`tab-${previousTab}`).classList.add("active");
     document.querySelectorAll(".nav-btn").forEach(b => {
