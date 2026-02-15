@@ -51,7 +51,7 @@
                 </li>
             </ul>
             <div class="sidebar-footer">
-                <span class="version-text">v1.0.0</span>
+                <span id="app-version-sidebar" class="version-text">v...</span>
             </div>
         </nav>
 
@@ -76,15 +76,20 @@
                     <div class="filter-group">
                         <label>Sort by</label>
                         <select id="sort-type" onchange="searchMods()">
-                            <option value="3" selected>Most Popular</option>
-                            <option value="1">Most Recent</option>
-                            <option value="11">Last Updated</option>
+                            <option value="3" selected>Trending</option>
+                            <option value="12">Relevance</option>
                             <option value="9">Most Subscribed</option>
+                            <option value="1">Most Recent</option>
+                            <option value="0">Top Rated</option>
                         </select>
+                        <button id="sort-dir-btn" class="icon-btn" onclick="toggleSortDir()"
+                            title="Toggle Sort Direction">
+                            ▼
+                        </button>
                     </div>
                     <div class="filter-group">
                         <label>Over time period</label>
-                        <select id="sort-days" onchange="searchMods()">
+                        <select id="sort-days">
                             <option value="1">Today</option>
                             <option value="7" selected>One Week</option>
                             <option value="30">Thirty Days</option>
@@ -93,6 +98,21 @@
                             <option value="365">One Year</option>
                             <option value="0">All Time</option>
                         </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Tags</label>
+                        <div class="custom-select-container" id="tags-dropdown">
+                            <div class="custom-select-trigger" onclick="toggleTagsDropdown()">
+                                <span id="tags-label">All Tags</span>
+                            </div>
+                            <div class="custom-select-options">
+                                <div class="custom-select-header">
+                                    <span>Filter Tags</span>
+                                    <button class="select-all-btn" onclick="toggleAllTags()">Toggle All</button>
+                                </div>
+                                <div id="tags-list"></div>
+                            </div>
+                        </div>
                     </div>
                     <div class="filter-group" style="margin-left: auto;">
                         <label>Size</label>
@@ -123,6 +143,16 @@
                 <div id="settings-alert" class="alert hidden"></div>
 
                 <div class="settings-card">
+                    <div class="form-group"
+                        style="padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
+                        <label>App Version</label>
+                        <div style="display:flex; align-items:center; gap: 15px;">
+                            <span id="update-status" style="color:var(--text-muted);">v0.5.1</span>
+                            <button id="update-btn" class="nav-btn small" onclick="checkUpdates()"
+                                style="padding: 6px 12px; font-size: 0.9em;">Check for Updates</button>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label for="api-key">Steam Web API Key</label>
                         <input type="text" id="api-key" placeholder="Enter your Steam Web API Key" />
@@ -142,19 +172,24 @@
                             Path to the Mods folder inside your People Playground install.
                             Required for downloading mods.
                         </p>
-                        </p>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Application Logs</label>
-                        <div id="settings-logs" class="logs-container"></div>
-                        <div style="display:flex;gap:10px;">
-                            <button class="btn-secondary" onclick="copyLogs()">Copy to Clipboard</button>
-                            <button class="btn-secondary" onclick="clearLogs()">Clear Logs</button>
-                        </div>
                     </div>
 
                     <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+                </div>
+
+                <!-- Logs Section (Wider) -->
+                <div id="logs-section" class="logs-section">
+                    <div class="logs-header" onclick="toggleLogs()">
+                        <h3>Application Logs</h3>
+                        <span class="logs-arrow">▼</span>
+                    </div>
+                    <div id="logs-content" class="logs-content">
+                        <div id="settings-logs" class="logs-container"></div>
+                        <div class="logs-actions">
+                            <button class="btn-outline" onclick="copyLogs()">Copy to Clipboard</button>
+                            <button class="btn-danger-outline" onclick="clearLogs()">Clear Logs</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
