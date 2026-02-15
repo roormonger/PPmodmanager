@@ -25,3 +25,7 @@ Thumbs.db
 
 # Brain
 .gemini/
+
+# Sensitive
+/src-tauri/tauri.key
+build_release.ps1

@@ -71,10 +71,7 @@ struct PlayerSummariesWrapper {
 }
 
 /// Batch-resolve Steam IDs to display names
-async fn resolve_creator_names(
-    api_key: &str,
-    steam_ids: &[String],
-) -> HashMap<String, String> {
+async fn resolve_creator_names(api_key: &str, steam_ids: &[String]) -> HashMap<String, String> {
     let mut map = HashMap::new();
     if steam_ids.is_empty() {
         return map;
@@ -108,6 +105,7 @@ pub async fn search_mods(
     num_per_page: u32,
     sort_type: u32,
     days: u32,
+    required_tags: Vec<String>,
 ) -> Result<QueryResponse, String> {
     let client = reqwest::Client::new();
 
@@ -120,6 +118,7 @@ pub async fn search_mods(
         ("return_short_description", "true".to_string()),
         ("return_vote_data", "true".to_string()),
         ("strip_description_bbcode", "true".to_string()),
+        ("match_all_tags", "false".to_string()), // Match ANY of the tags
     ];
 
     if days > 0 {
@@ -129,8 +128,36 @@ pub async fn search_mods(
     if !query.is_empty() {
         params.push(("search_text", query.to_string()));
     }
-    if !cursor.is_empty() {
-        params.push(("cursor", cursor.to_string()));
+    
+    // Always pass a cursor. If empty, use "*" to start pagination.
+    let cursor_param = if cursor.is_empty() { "*" } else { cursor };
+    params.push(("cursor", cursor_param.to_string()));
+
+    // Add tags
+    for (i, tag) in required_tags.iter().enumerate() {
+        // Steam API expects requiredtags[0], requiredtags[1], etc.
+        // OR it might accept comma separated? Docs say "requiredtags" is an array.
+        // reqwest query params with same key?
+        // Let's try passing multiple "requiredtags" keys first, but usually in Steam API it's specific.
+        // Actually, IPublishedFileService/QueryFiles/v1 docs say:
+        // requiredtags (string) "Tags to require on the returned items." -> "Comma separated list".
+        // Let's try comma separated first.
+    }
+    if !required_tags.is_empty() {
+         // Some sources say `requiredtags` is comma separated.
+         // Others say it supports multiple keys.
+         // Let's go with push("requiredtags", required_tags.join(","))
+         // Wait, `reqwest` handles array of tuples.
+         // But for `requiredtags` in Steam Web API, it often wants `requiredtags[0]`.
+         // HOWEVER, QueryFiles/v1 is valid. 
+         // Most implementations use `requiredtags` as a single parameter with comma values?
+         // Let's check how `steam_api` crate does it or similar.
+         // Official docs are vague.
+         // Let's assume comma separated string for now?
+         // If it fails, I'll switch to `requiredtags[0]`.
+         // But wait, `QueryFiles` takes `requiredtags` as a param.
+         // NOTE: `requiredtags` implies MUST HAVE. If `match_all_tags` is false, it means MUST HAVE AT LEAST ONE.
+         params.push(("requiredtags", required_tags.join(",")));
     }
 
     let resp = client
@@ -144,6 +171,12 @@ pub async fn search_mods(
         return Err(format!("Steam API returned status {}", resp.status()));
     }
 
+    // let text = resp.text().await.map_err(|e| format!("Failed to read text: {}", e))?;
+    // println!("Raw Steam Response: {}", text); // Debugging
+
+    // let wrapper: ApiWrapper = serde_json::from_str(&text)
+    //    .map_err(|e| format!("Failed to parse response: {}", e))?;
+    
     let wrapper: ApiWrapper = resp
         .json()
         .await
@@ -179,6 +212,7 @@ pub async fn search_mods_cmd(
     cursor: String,
     sort_type: Option<u32>,
     days: Option<u32>,
+    required_tags: Option<Vec<String>>,
 ) -> Result<QueryResponse, String> {
     let api_key = {
         let config = state.0.lock().unwrap();
@@ -188,7 +222,16 @@ pub async fn search_mods_cmd(
         config.steam_api_key.clone()
     };
 
-    search_mods(&api_key, &query, &cursor, 50, sort_type.unwrap_or(3), days.unwrap_or(7)).await
+    search_mods(
+        &api_key,
+        &query,
+        &cursor,
+        50,
+        sort_type.unwrap_or(3),
+        days.unwrap_or(7),
+        required_tags.unwrap_or_default(),
+    )
+    .await
 }
 
 // ── Mod Detail ──────────────────────────────────

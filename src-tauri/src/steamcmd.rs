@@ -30,8 +30,8 @@ pub fn ensure_installed() -> Result<(), String> {
     let url = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip";
 
     // Download
-    let response = reqwest::blocking::get(url)
-        .map_err(|e| format!("Failed to download SteamCMD: {}", e))?;
+    let response =
+        reqwest::blocking::get(url).map_err(|e| format!("Failed to download SteamCMD: {}", e))?;
     let bytes = response
         .bytes()
         .map_err(|e| format!("Failed to read response: {}", e))?;
@@ -74,7 +74,10 @@ pub fn download_workshop_item(app_id: &str, workshop_id: &str) -> Result<String,
     let exe = steamcmd_exe();
     let dir = steamcmd_dir();
 
-    println!("Downloading workshop item {} for app {}...", workshop_id, app_id);
+    println!(
+        "Downloading workshop item {} for app {}...",
+        workshop_id, app_id
+    );
 
     let mut cmd = Command::new(&exe);
     #[cfg(windows)]
@@ -141,25 +144,40 @@ pub async fn install_mod(
         match download_workshop_item(app_id, &workshop_id) {
             Ok(path) => Ok(path),
             Err(e) => {
-                println!("First download attempt failed: {}. Cleaning cache and retrying...", e);
+                println!(
+                    "First download attempt failed: {}. Cleaning cache and retrying...",
+                    e
+                );
                 // Clean cache and target
                 let dir = steamcmd_dir();
                 // 1. cleanup downloads staging
-                let staging = dir.join("steamapps").join("workshop").join("downloads").join(app_id);
+                let staging = dir
+                    .join("steamapps")
+                    .join("workshop")
+                    .join("downloads")
+                    .join(app_id);
                 if staging.exists() {
                     let _ = fs::remove_dir_all(&staging);
                 }
                 // 2. cleanup content target
-                let content = dir.join("steamapps").join("workshop").join("content").join(app_id).join(&workshop_id);
+                let content = dir
+                    .join("steamapps")
+                    .join("workshop")
+                    .join("content")
+                    .join(app_id)
+                    .join(&workshop_id);
                 if content.exists() {
                     let _ = fs::remove_dir_all(&content);
                 }
                 // 3. cleanup ACF file (force re-index)
-                let acf = dir.join("steamapps").join("workshop").join(format!("appworkshop_{}.acf", app_id));
+                let acf = dir
+                    .join("steamapps")
+                    .join("workshop")
+                    .join(format!("appworkshop_{}.acf", app_id));
                 if acf.exists() {
                     let _ = fs::remove_file(&acf);
                 }
-                
+
                 // Retry
                 download_workshop_item(app_id, &workshop_id)
             }
@@ -169,12 +187,18 @@ pub async fn install_mod(
     .map_err(|e| format!("Task error: {}", e))??;
 
     // Move to mods folder
-    let dest = Path::new(&config.people_playground_dir)
-        .join(&workshop_id_for_move);
-    move_dir(Path::new(&download_path), &dest)
-        .map_err(|e| format!("Download succeeded but failed to move to mods folder: {}", e))?;
+    let dest = Path::new(&config.people_playground_dir).join(&workshop_id_for_move);
+    move_dir(Path::new(&download_path), &dest).map_err(|e| {
+        format!(
+            "Download succeeded but failed to move to mods folder: {}",
+            e
+        )
+    })?;
 
-    Ok(format!("Mod {} installed successfully!", workshop_id_for_move))
+    Ok(format!(
+        "Mod {} installed successfully!",
+        workshop_id_for_move
+    ))
 }
 
 fn move_dir(src: &Path, dest: &Path) -> Result<(), String> {
@@ -284,11 +308,16 @@ fn find_thumbnail(mod_dir: &Path) -> Option<String> {
                 Some(f) => f.to_string_lossy().to_lowercase(),
                 None => continue,
             };
-            let is_image = fname.ends_with(".png") || fname.ends_with(".jpg") || fname.ends_with(".jpeg");
+            let is_image =
+                fname.ends_with(".png") || fname.ends_with(".jpg") || fname.ends_with(".jpeg");
             if is_image && fname.starts_with("thumb") {
                 // Read and base64 encode
                 if let Ok(bytes) = fs::read(&p) {
-                    let mime = if fname.ends_with(".png") { "image/png" } else { "image/jpeg" };
+                    let mime = if fname.ends_with(".png") {
+                        "image/png"
+                    } else {
+                        "image/jpeg"
+                    };
                     use base64::Engine;
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
                     return Some(format!("data:{};base64,{}", mime, b64));
@@ -320,8 +349,7 @@ pub async fn list_installed_mods(
         return Ok(vec![]);
     }
 
-    let entries = fs::read_dir(path)
-        .map_err(|e| format!("Failed to read mods folder: {}", e))?;
+    let entries = fs::read_dir(path).map_err(|e| format!("Failed to read mods folder: {}", e))?;
 
     let mut mods = Vec::new();
     for entry in entries.flatten() {
@@ -348,9 +376,18 @@ pub async fn list_installed_mods(
         };
 
         // Get name, author, description from JSON or fallback
-        let name = mod_json.as_ref().map(|j| j.name.clone()).unwrap_or_else(|| folder_name.clone());
-        let author = mod_json.as_ref().map(|j| j.author.clone()).unwrap_or_default();
-        let description = mod_json.as_ref().map(|j| j.description.clone()).unwrap_or_default();
+        let name = mod_json
+            .as_ref()
+            .map(|j| j.name.clone())
+            .unwrap_or_else(|| folder_name.clone());
+        let author = mod_json
+            .as_ref()
+            .map(|j| j.author.clone())
+            .unwrap_or_default();
+        let description = mod_json
+            .as_ref()
+            .map(|j| j.description.clone())
+            .unwrap_or_default();
 
         // Find local thumbnail
         let thumbnail_data = find_thumbnail(&dir_path).unwrap_or_default();
@@ -387,8 +424,7 @@ pub async fn delete_installed_mod(
         return Err(format!("Mod folder '{}' not found.", workshop_id));
     }
 
-    fs::remove_dir_all(&mod_path)
-        .map_err(|e| format!("Failed to delete mod: {}", e))?;
+    fs::remove_dir_all(&mod_path).map_err(|e| format!("Failed to delete mod: {}", e))?;
 
     Ok(format!("Mod {} deleted.", workshop_id))
 }

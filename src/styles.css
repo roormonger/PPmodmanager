@@ -277,6 +277,123 @@ body {
     border-color: var(--text-muted);
 }
 
+/* ── Custom Multi-Select Dropdown ────────────── */
+.custom-select-container {
+    position: relative;
+    font-size: 12px;
+}
+
+.custom-select-trigger {
+    padding: 6px 14px 6px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 140px;
+    justify-content: space-between;
+}
+
+.custom-select-trigger:after {
+    content: "▼";
+    font-size: 8px;
+    color: var(--text-secondary);
+}
+
+.custom-select-options {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-top: 4px;
+    z-index: 100;
+    max-height: 300px;
+    overflow-y: auto;
+    display: none;
+    box-shadow: var(--shadow-lg);
+    padding: 4px;
+}
+
+.custom-select-options.open {
+    display: block;
+}
+
+.custom-option {
+    padding: 6px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 4px;
+    transition: background 0.1s;
+    color: var(--text-secondary);
+}
+
+.custom-option:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.custom-option.selected {
+    color: var(--accent);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.custom-option input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.custom-select-header {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+}
+
+.select-all-btn {
+    color: var(--accent);
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.icon-btn {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+}
+
+.icon-btn:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+
+.icon-btn.asc {
+    transform: rotate(180deg);
+}
+
 /* ── Alert ───────────────────────────────────── */
 .alert {
     padding: 12px 16px;
@@ -1131,6 +1248,134 @@ input[type=range]::-webkit-slider-thumb:hover {
     cursor: default;
     opacity: 0.8;
     pointer-events: none;
+}
+
+/* ── Logs Section ────────────────────────────── */
+.logs-section {
+    max-width: 1000px;
+    margin: 40px 0 0;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.logs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.logs-header:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--text-muted);
+}
+
+.logs-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.logs-arrow {
+    color: var(--text-muted);
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+
+.logs-content {
+    display: none;
+    margin-top: 10px;
+    animation: fadeIn 0.2s;
+}
+
+.logs-content.expanded {
+    display: block;
+}
+
+.logs-section.expanded .logs-arrow {
+    transform: rotate(180deg);
+}
+
+.logs-container {
+    height: 400px;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow-y: auto;
+    white-space: pre-wrap;
+    margin-bottom: 12px;
+}
+
+.logs-log-entry {
+    margin-bottom: 4px;
+    line-height: 1.4;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    padding-bottom: 2px;
+}
+
+.logs-log-entry.error {
+    color: #f87171;
+}
+
+.logs-log-entry.success {
+    color: #4ade80;
+}
+
+.logs-log-entry.info {
+    color: #94a3b8;
+}
+
+.logs-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-outline:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+    background: var(--bg-input);
+}
+
+.btn-danger-outline {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-danger-outline:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+    color: #ef4444;
 }
 
 /* ── Logs ────────────────────────────────────── */

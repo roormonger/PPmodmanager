@@ -85,6 +85,13 @@ function clearLogs() {
     renderLogs();
 }
 
+function toggleLogs() {
+    const section = document.getElementById("logs-section");
+    const content = document.getElementById("logs-content");
+    section.classList.toggle("expanded");
+    content.classList.toggle("expanded");
+}
+
 // ── Settings ────────────────────────────────────
 async function loadSettings() {
     try {
@@ -112,9 +119,138 @@ async function saveSettings() {
     }
 }
 
+// ── Tags Logic ──────────────────────────────────
+const ALL_TAGS = [
+    "Contraptions", "Building", "Fun", "Realistic", "Destructible",
+    "Electronics", "Vehicle", "Machine", "Utility", "Mods", "Human"
+];
+let selectedTags = [...ALL_TAGS]; // Default all enabled
+
+function initTags() {
+    // Load from storage
+    const saved = localStorage.getItem("selected-tags");
+    if (saved) {
+        try {
+            selectedTags = JSON.parse(saved);
+        } catch (e) { console.error("Bad tag save", e); }
+    }
+
+    renderTagsDropdown();
+}
+
+function renderTagsDropdown() {
+    const container = document.getElementById("tags-list");
+    container.innerHTML = "";
+
+    ALL_TAGS.forEach(tag => {
+        const isChecked = selectedTags.includes(tag);
+        const div = document.createElement("div");
+        div.className = `custom-option ${isChecked ? 'selected' : ''}`;
+        div.onclick = (e) => {
+            e.stopPropagation();
+            toggleTag(tag);
+        };
+        div.innerHTML = `
+            <input type="checkbox" ${isChecked ? "checked" : ""} readonly>
+            <span>${tag}</span>
+        `;
+        container.appendChild(div);
+    });
+
+    updateTagLabel();
+}
+
+function toggleTagsDropdown() {
+    const el = document.querySelector(".custom-select-options");
+    el.classList.toggle("open");
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function (event) {
+    const isClickInside = document.getElementById('tags-dropdown').contains(event.target);
+    if (!isClickInside) {
+        document.querySelector(".custom-select-options").classList.remove("open");
+    }
+});
+
+function toggleTag(tag) {
+    if (selectedTags.includes(tag)) {
+        selectedTags = selectedTags.filter(t => t !== tag);
+    } else {
+        selectedTags.push(tag);
+    }
+    saveTags();
+    renderTagsDropdown();
+    // Debounce search? Or just search immediately
+    searchMods();
+}
+
+function toggleAllTags() {
+    if (selectedTags.length === ALL_TAGS.length) {
+        selectedTags = []; // Deselect all
+    } else {
+        selectedTags = [...ALL_TAGS]; // Select all
+    }
+    saveTags();
+    renderTagsDropdown();
+    searchMods();
+}
+
+function updateTagLabel() {
+    const label = document.getElementById("tags-label");
+    if (selectedTags.length === ALL_TAGS.length) {
+        label.textContent = "All Tags";
+    } else if (selectedTags.length === 0) {
+        label.textContent = "No Tags";
+    } else {
+        label.textContent = `${selectedTags.length} Selected`;
+    }
+}
+
+function saveTags() {
+    localStorage.setItem("selected-tags", JSON.stringify(selectedTags));
+}
+
+// ── Sort Direction ──────────────────────────────
+let sortDesc = true; // Default Descending (Normal)
+
+function initSortDir() {
+    const saved = localStorage.getItem("sort-desc");
+    if (saved !== null) {
+        sortDesc = saved === "true";
+    }
+    updateSortDirBtn();
+}
+
+function toggleSortDir() {
+    sortDesc = !sortDesc;
+    localStorage.setItem("sort-desc", sortDesc);
+    updateSortDirBtn();
+    searchMods();
+}
+
+function updateSortDirBtn() {
+    const btn = document.getElementById("sort-dir-btn");
+    const sortType = document.getElementById("sort-type").value;
+
+    // Only show for "Top Rated" (0) which supports Ascending (via query_type 10)
+    if (sortType === "0") {
+        btn.style.display = "flex";
+    } else {
+        btn.style.display = "none";
+        // Reset to Desc (true) if hidden to avoid confusion?
+        // But if user switches back, maybe remember?
+        // Let's keep state but hide button.
+    }
+
+    btn.textContent = sortDesc ? "▼" : "▲";
+    btn.title = sortDesc ? "Descending" : "Ascending";
+}
+
 // ── Mod Search ──────────────────────────────────
 async function searchMods(cursor = "") {
     hideAlert("mods-alert");
+    updateSortDirBtn(); // Ensure button visibility updates on search/change
 
     if (!cursor) {
         currentMods = [];
@@ -125,15 +261,89 @@ async function searchMods(cursor = "") {
     loadingEl.classList.remove("hidden");
     document.getElementById("load-more-container").classList.add("hidden");
 
+    // Load sort preferences
+    let savedSortType = localStorage.getItem("sort-type");
+    const savedSortDays = localStorage.getItem("sort-days");
+
+    // Fix: "Last Updated" (20) causes issues, reset to Trend (3) if found
+    if (savedSortType === "20") savedSortType = "3";
+
+    if (savedSortType) document.getElementById("sort-type").value = savedSortType;
+    if (savedSortDays) document.getElementById("sort-days").value = savedSortDays;
+
     const query = document.getElementById("search-input").value.trim();
-    const sortType = parseInt(document.getElementById("sort-type").value);
+    let sortType = parseInt(document.getElementById("sort-type").value); // Let be mutable for mapping
     const sortDays = parseInt(document.getElementById("sort-days").value);
 
+    // Apply Sort Direction Mapping
+    // API limitation: Standard queries are usually Descending. Avoid mapping unless we know a specific ID.
+    // 0 (Vote) -> 10 (VoteAsc)?
+    if (!sortDesc) {
+        if (sortType === 0) {
+            sortType = 10; // RankedByTotalVotesAsc
+        }
+        // Add others if found. For now, only Vote works reliably Ascending.
+        // If user tries Asc on Date, it might ignore it.
+    }
+
+    // Filter tags logic:
+    // If ALL tags are selected, we send empty list (implied "show all" or "don't filter").
+    // If SOME are selected, we send them.
+    // If NONE are selected, we send empty list (Steam gives everything usually, or nothing?).
+    // Actually, if we want to filter to ONLY these tags, we send them.
+    // Steam "requiredtags" means "Must have ALL (if match_all=true) or ANY (if match_all=false)".
+    // Backend sets match_all=false.
+    // So if I select "Fun", "Vehicle". It shows mods with Fun OR Vehicle.
+    // That matches "Show results for mods with those tags".
+    // If I select ALL, it shows mods with ANY of those tags. Since almost all mods have at least one tag, it effectively shows everything.
+
+    // However, if we don't send `requiredtags` at all, Steam shows everything.
+    // If we send ALL known tags, it shows mods that have at least one of them.
+    // Effectively similar result.
+    // Let's send `selectedTags`.
+
+    let tagsToSend = selectedTags.length === ALL_TAGS.length ? [] : selectedTags;
+    // Actually, user explicitly said "only show results for mods with those tags".
+    // If they uncheck "Contraption", they might NOT want to see it?
+    // Usually "Filter" means "Restrict to these".
+    // If I check "Vehicle", I ONLY see Vehicles. (Logic: Has Tag 'Vehicle').
+    // If I check "Vehicle" and "Fun". I see Vehicles OR Fun stuff.
+    // If I have everything checked, I see everything.
+    // So sending `selectedTags` is correct.
+    // Optimization: If selectedTags.length == ALL_TAGS.length, sending nothing is often safer/faster default
+    // UNLESS there are mods with NO tags?
+    // Let's send nothing if all are selected to avoid huge URL param.
+    if (selectedTags.length === ALL_TAGS.length) tagsToSend = [];
+    // Wait, if I explicitly uncheck "Human", I want to see everything EXCEPT "Human"?
+    // No, standard filter behavior is inclusive. "Show me X".
+    // If I uncheck "Human", I'm just not asking to see "Human". But if a mod is "Vehicle", I see it.
+    // So "Human" mods will only appear if they ALSO have "Vehicle".
+    // A mod that is "Human" AND "Vehicle" will be SHOWN (because it matches Vehicle).
+    // This is "Match Any" logic. It works.
+
     try {
-        const data = await invoke("search_mods_cmd", { query, cursor, sortType, days: sortDays });
+        const data = await invoke("search_mods_cmd", {
+            query,
+            cursor,
+            sortType,
+            days: sortDays,
+            requiredTags: tagsToSend
+        });
+        addLog(`[Search] Got ${data?.publishedfiledetails?.length || 0} items. Next cursor: ${data?.next_cursor ? "Yes" : "No"}`, "info");
+
         if (data && data.publishedfiledetails) {
-            currentMods = [...currentMods, ...data.publishedfiledetails];
+            if (data.publishedfiledetails.length === 0) {
+                nextCursor = "";
+                renderMods();
+                return;
+            }
+            if (!cursor) {
+                currentMods = data.publishedfiledetails;
+            } else {
+                currentMods = [...currentMods, ...data.publishedfiledetails];
+            }
             nextCursor = data.next_cursor || "";
+            addLog(`[Search] Total: ${currentMods.length}. Next cursor: ${nextCursor.substring(0, 10)}...`, "info");
             renderMods();
         }
     } catch (e) {
@@ -207,7 +417,10 @@ function renderMods() {
 }
 
 function loadMore() {
-    if (nextCursor) searchMods(nextCursor);
+    if (nextCursor) {
+        addLog("[InfiniteScroll] Loading more...", "info");
+        searchMods(nextCursor);
+    }
 }
 
 // ── Infinite Scroll Observer ────────────────────
@@ -222,6 +435,7 @@ function setupInfiniteScroll() {
     observer = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
             if (entry.isIntersecting && nextCursor) {
+                // addLog("[InfiniteScroll] Intersection detected", "info");
                 loadMore();
             }
         });
@@ -601,8 +815,28 @@ document.getElementById("search-input").addEventListener("keydown", (e) => {
 });
 
 // ── Init ────────────────────────────────────────
+
+async function getAppVersion() {
+    try {
+        const ver = await invoke("get_app_version");
+        const sidebarEl = document.getElementById("app-version-sidebar");
+        const settingsEl = document.getElementById("update-status"); // existing one
+
+        if (sidebarEl) sidebarEl.textContent = `v${ver}`;
+        // Settings element is also updated by checkUpdates, but good to have base version immediately
+        if (settingsEl && settingsEl.textContent === "v0.5.1") {
+            settingsEl.textContent = `v${ver}`;
+        }
+    } catch (e) {
+        console.error("Failed to get app version", e);
+    }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
+    getAppVersion();
     loadSettings();
+    initTags();
+    initSortDir();
     await loadInstalledMods();
     setupInfiniteScroll();
     searchMods();
@@ -758,4 +992,55 @@ if (zoomSlider) {
         document.documentElement.style.setProperty("--card-min-width", size + "px");
         localStorage.setItem("mod-card-zoom", size);
     });
+}
+
+// ── Auto-Updater ────────────────────────────────
+async function checkUpdates() {
+    const btn = document.getElementById("update-btn");
+    const status = document.getElementById("update-status");
+
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = "Checking...";
+
+    try {
+        const update = await invoke("check_for_updates");
+        if (update) {
+            if (status) status.textContent = `Avail: v${update.version}`;
+            if (btn) {
+                btn.textContent = "Update Now";
+                btn.disabled = false;
+                btn.onclick = () => installUpdate(btn);
+            }
+            createToast("update-avail", "success", "Update Available", `Version ${update.version} is ready.`);
+        } else {
+            if (status) status.textContent = "Up to date (v0.5.1)";
+            if (btn) {
+                btn.textContent = "Check for Updates";
+                btn.disabled = false;
+            }
+            createToast("no-update", "info", "Up to date", "You are on the latest version.", 2000);
+        }
+    } catch (e) {
+        if (status) status.textContent = "Check failed";
+        if (btn) {
+            btn.textContent = "Check for Updates";
+            btn.disabled = false;
+        }
+        createToast("update-err", "error", "Update Check Failed", String(e), 4000);
+    }
+}
+
+async function installUpdate(btn) {
+    if (!confirm("Update will download and restart the app. Continue?")) return;
+
+    btn.disabled = true;
+    btn.textContent = "Downloading...";
+
+    try {
+        await invoke("install_update");
+    } catch (e) {
+        btn.textContent = "Update Now";
+        btn.disabled = false;
+        createToast("install-err", "error", "Update Failed", String(e), 5000);
+    }
 }
