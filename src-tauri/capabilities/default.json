@@ -1,0 +1,13 @@
+{
+    "$schema": "https://raw.githubusercontent.com/nicegui/tauri-capabilities-schema/main/schema.json",
+    "identifier": "default",
+    "description": "Default capabilities for the app",
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "core:default",
+        "shell:allow-open",
+        "window-state:default"
+    ]
+}
