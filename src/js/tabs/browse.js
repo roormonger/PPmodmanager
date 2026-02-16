@@ -114,13 +114,21 @@ export function renderMods() {
         for (let i = 1; i <= 5; i++) {
             starsHtml += `<span class="star ${i <= starCount ? 'filled' : ''}">★</span>`;
         }
+        const title = mod.title || "Untitled";
+        const author = mod.creator_name || "Unknown";
+        const size = formatBytes(mod.file_size);
 
-        const author = mod.creator_name || "";
+        // Chip Logic - Fix plural 'Contraptions' check
+        const isContraption = mod.tags && mod.tags.some(t => t.tag === 'Contraption' || t.tag === 'Contraptions');
+        const typeLabel = isContraption ? 'Contraption' : 'Mod';
 
         card.innerHTML = `
             <img class="mod-card-img" src="${imgSrc}" alt="${escapeHtml(mod.title)}" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 300 300\\' fill=\\'%23222\\' %3E%3Crect width=\\'300\\' height=\\'300\\' /%3E%3Ctext x=\\'50%25\\' y=\\'50%25\\' dominant-baseline=\\'middle\\' text-anchor=\\'middle\\' fill=\\'%23666\\' font-family=\\'sans-serif\\' font-size=\\'24\\' %3ENo Image%3C/text%3E%3C/svg%3E'" />
             <div class="mod-card-body">
-                <div class="mod-card-stars">${starsHtml}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <div class="mod-card-stars" style="margin-bottom: 0;">${starsHtml}</div>
+                    <span style="font-size: 11px; color: var(--text-muted);">${typeLabel}</span>
+                </div>
                 <div class="mod-card-title">${escapeHtml(mod.title)}</div>
                 ${author ? `<div class="mod-card-author">by ${escapeHtml(author)}</div>` : ""}
             </div>
@@ -196,7 +204,10 @@ function renderModDetail(mod) {
         if (el) el.textContent = val;
     };
 
+    const isContraption = mod.tags && mod.tags.some(t => t.tag === 'Contraption' || t.tag === 'Contraptions');
+
     setIfExists("detail-author", author);
+    setIfExists("detail-type", isContraption ? "Contraption" : "Mod");
     setIfExists("detail-filesize", size);
     setIfExists("detail-created", mod.time_created ? new Date(mod.time_created * 1000).toLocaleDateString() : "Unknown");
     setIfExists("detail-updated", date);

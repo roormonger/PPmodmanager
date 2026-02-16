@@ -208,6 +208,7 @@ pub async fn search_mods(
         ("return_short_description", "true".to_string()),
         ("return_vote_data", "true".to_string()),
         ("strip_description_bbcode", "true".to_string()),
+        ("return_tags", "true".to_string()), // Enable tags to verify headers
         ("match_all_tags", "false".to_string()), // Match ANY of the tags
     ];
 
