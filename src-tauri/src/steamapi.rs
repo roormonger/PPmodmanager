@@ -2,6 +2,55 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
+// Helper for "string or number" deserialization
+fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct StringOrNumberVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for StringOrNumberVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("string or number")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<String, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value.to_owned())
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<String, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<String, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value.to_string())
+        }
+    }
+
+    deserializer.deserialize_any(StringOrNumberVisitor)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionChild {
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub publishedfileid: String,
+    #[serde(default)]
+    pub sortorder: u32,
+    #[serde(default)]
+    pub filetype: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VoteData {
     #[serde(default)]
@@ -29,12 +78,22 @@ pub struct PublishedFileDetail {
     #[serde(default)]
     pub file_description: String,
     #[serde(default)]
+    pub short_description: String,
+    #[serde(default)]
     pub creator: String,
     #[serde(default)]
     pub vote_data: VoteData,
+    #[serde(default, rename = "file_type")]
+    pub filetype: u32,
+    #[serde(default, rename = "consumer_appid")]
+    pub consumer_app_id: u32,
     /// Populated after resolving Steam IDs
     #[serde(default)]
     pub creator_name: String,
+    #[serde(default)]
+    pub children: Vec<CollectionChild>,
+    #[serde(default)]
+    pub tags: Vec<ModTag>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +112,30 @@ struct ApiWrapper {
 }
 
 // Steam user profile resolution
+// Structs defined at top of file
+
+
+#[derive(Debug, Clone, Deserialize)]
+struct CollectionDetailsResponseWrapper {
+    response: CollectionDetailsResponse,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CollectionDetailInner {
+    #[serde(default, rename = "publishedfileid")]
+    _publishedfileid: String,
+    #[serde(default)]
+    pub children: Vec<CollectionChild>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CollectionDetailsResponse {
+    #[serde(default)]
+    pub collectiondetails: Vec<CollectionDetailInner>,
+}
+
+
+
 #[derive(Debug, Clone, Deserialize)]
 struct SteamPlayer {
     #[serde(default)]
@@ -305,6 +388,8 @@ pub struct ModDetail {
     pub tags: Vec<ModTag>,
     #[serde(default)]
     pub previews: Vec<ModPreview>,
+    #[serde(default)]
+    pub children: Vec<CollectionChild>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -391,4 +476,355 @@ pub async fn get_mod_details_cmd(
     }
 
     Ok(detail)
+}
+
+// ── Collections ─────────────────────────────────
+
+/// Search for People Playground workshop collections (filetype=2)
+pub async fn search_collections(
+    api_key: &str,
+    query: &str,
+    cursor: &str,
+    num_per_page: u32,
+    sort_type: u32,
+    days: u32,
+) -> Result<QueryResponse, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    let mut accumulated_items = Vec::new();
+    let mut current_cursor = if cursor.is_empty() { "*".to_string() } else { cursor.to_string() };
+    let mut final_total = 0;
+    
+    // Fetch up to 10 pages to find enough collections (ignoring garbage returned by API)
+    for _page_attempt in 0..10 {
+        let mut params: Vec<(&str, String)> = vec![
+            ("key", api_key.to_string()),
+            ("appid", "1118200".to_string()),
+            ("query_type", sort_type.to_string()),
+            ("filetype", "1".to_string()),   // CONFIRMED: For AppID 1118200, Collections are filetype 1 (not 2)
+            ("numperpage", num_per_page.to_string()), 
+            ("return_previews", "true".to_string()),
+            ("return_short_description", "true".to_string()),
+            ("return_vote_data", "true".to_string()),
+            ("strip_description_bbcode", "true".to_string()),
+            ("return_children", "true".to_string()), 
+            ("return_tags", "true".to_string()),
+        ];
+
+        if days > 0 {
+            params.push(("days", days.to_string()));
+        }
+
+        if !query.is_empty() {
+             params.push(("search_text", query.to_string()));
+        }
+
+        params.push(("cursor", current_cursor.clone()));
+
+        // Retry logic
+        let mut last_err = String::new();
+        let mut resp = None;
+        for attempt in 0..3 {
+            match client
+                .get("https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/")
+                .query(&params)
+                .send()
+                .await
+            {
+                Ok(r) => { resp = Some(r); break; }
+                Err(e) => {
+                    last_err = format!("HTTP request failed: {}", e);
+                    if attempt < 2 {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        }
+        let resp = resp.ok_or(last_err)?;
+
+        if !resp.status().is_success() {
+             return Err(format!("Steam API returned status {}", resp.status()));
+        }
+
+        let wrapper: ApiWrapper = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+        
+        // Filter this page
+        let mut page_items = wrapper.response.publishedfiledetails;
+        
+        // Filter: Ensure we only show items that are likely collections
+        // page_items.retain(|item| item.filetype == 1); // Redundant if we asked for 1
+        
+        accumulated_items.extend(page_items);
+        final_total = wrapper.response.total; 
+        current_cursor = wrapper.response.next_cursor;
+        
+        if accumulated_items.len() >= num_per_page as usize || current_cursor.is_empty() {
+            break;
+        }
+    }
+
+    let mut response = QueryResponse {
+        publishedfiledetails: accumulated_items,
+        next_cursor: current_cursor,
+        total: final_total,
+    };
+
+    // Resolve creator names
+    let unique_ids: Vec<String> = response
+        .publishedfiledetails
+        .iter()
+        .map(|m| m.creator.clone())
+        .filter(|id| !id.is_empty())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let names = resolve_creator_names(api_key, &unique_ids).await;
+
+    for detail in &mut response.publishedfiledetails {
+        if let Some(name) = names.get(&detail.creator) {
+            detail.creator_name = name.clone();
+        }
+    }
+
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn search_collections_cmd(
+    state: tauri::State<'_, crate::config::ConfigState>,
+    query: String,
+    cursor: String,
+    sort_type: Option<u32>,
+    days: Option<u32>,
+) -> Result<QueryResponse, String> {
+    let api_key = {
+        let config = state.0.lock().unwrap();
+        if config.steam_api_key.is_empty() {
+            return Err("Steam API Key not configured. Go to Settings to add it.".to_string());
+        }
+        config.steam_api_key.clone()
+    };
+
+    // If searching by text and no sort specified, default to Relevance (12) instead of Trend (3)
+    let default_sort = if !query.is_empty() { 12 } else { 3 };
+    let sort = sort_type.unwrap_or(default_sort);
+
+    search_collections(
+        &api_key,
+        &query,
+        &cursor,
+        50,
+        sort,
+        days.unwrap_or(36500),
+    )
+    .await
+}
+
+// Response structs removed (moved to top)
+
+
+
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CollectionFullDetail {
+    pub collection: ModDetail,
+    pub items: Vec<ModDetail>,
+}
+
+#[tauri::command]
+pub async fn get_collection_details_cmd(
+    state: tauri::State<'_, crate::config::ConfigState>,
+    collection_id: String,
+) -> Result<CollectionFullDetail, String> {
+    let api_key = {
+        let config = state.0.lock().unwrap();
+        if config.steam_api_key.is_empty() {
+            return Err("Steam API Key not configured.".to_string());
+        }
+        config.steam_api_key.clone()
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    // 1. Get collection metadata (same as mod detail)
+    let mut last_err = String::new();
+    let mut resp = None;
+    for attempt in 0..3 {
+        match client
+            .get("https://api.steampowered.com/IPublishedFileService/GetDetails/v1/")
+            .query(&[
+                ("key", api_key.as_str()),
+                ("includevotes", "true"),
+                ("includetags", "true"),
+                ("includeadditionalpreviews", "true"),
+                ("strip_description_bbcode", "true"),
+                ("includechildren", "true"),
+            ])
+            .query(&[("publishedfileids[0]", &collection_id)])
+            .send()
+            .await
+        {
+            Ok(r) => { resp = Some(r); break; }
+            Err(e) => {
+                last_err = format!("HTTP request failed: {}", e);
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+    let resp = resp.ok_or(last_err)?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Steam API returned status {}", resp.status()));
+    }
+
+    let wrapper: DetailWrapper = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse collection detail: {}", e))?;
+
+    let mut collection = wrapper
+        .response
+        .publishedfiledetails
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Collection not found".to_string())?;
+
+    // Resolve collection creator name
+    if !collection.creator.is_empty() {
+        let names = resolve_creator_names(&api_key, &[collection.creator.clone()]).await;
+        if let Some(name) = names.get(&collection.creator) {
+            collection.creator_name = name.clone();
+        }
+    }
+
+    // 2. Get list of items in the collection via GetCollectionDetails
+    let mut last_err2 = String::new();
+    let mut resp2 = None;
+    for attempt in 0..3 {
+        match client
+            .post("https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/")
+            .form(&[
+                ("key", api_key.as_str()),
+                ("collectioncount", "1"),
+                ("publishedfileids[0]", &collection_id),
+            ])
+            .send()
+            .await
+        {
+            Ok(r) => { resp2 = Some(r); break; }
+            Err(e) => {
+                last_err2 = format!("HTTP request failed: {}", e);
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+    let resp2 = resp2.ok_or(last_err2)?;
+
+    if !resp2.status().is_success() {
+        return Err(format!("GetCollectionDetails returned status {}", resp2.status()));
+    }
+
+    let text = resp2.text().await.map_err(|e| format!("Failed to get text: {}", e))?;
+    println!("DEBUG: GetCollectionDetails response: {}", text); 
+
+    let wrapper: CollectionDetailsResponseWrapper = serde_json::from_str(&text)
+        .map_err(|e| format!("Failed to parse collection items: {}, text: {}", e, text))?;
+
+    let children = wrapper.response
+        .collectiondetails
+        .into_iter()
+        .next()
+        .map(|c| c.children)
+        .unwrap_or_default();
+
+    println!("DEBUG: Found {} children for collection {}", children.len(), collection_id);
+
+    if children.is_empty() {
+        return Ok(CollectionFullDetail { collection, items: vec![] });
+    }
+
+    // 3. Batch fetch details for all child items
+    let child_ids: Vec<String> = children
+        .iter()
+        // .filter(|c| c.filetype == 0) // Removed filter - trust API or handle in UI
+        .map(|c| c.publishedfileid.clone())
+        .collect();
+
+    let mut items: Vec<ModDetail> = Vec::new();
+
+    // Steam API supports multiple publishedfileids in one call
+    // Process in chunks of 20
+    for chunk in child_ids.chunks(20) {
+        let indexed: Vec<(String, String)> = chunk
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (format!("publishedfileids[{}]", i), id.clone()))
+            .collect();
+
+        let mut resp3 = None;
+        for attempt in 0..3 {
+            let mut req = client
+                .get("https://api.steampowered.com/IPublishedFileService/GetDetails/v1/")
+                .query(&[
+                    ("key", api_key.as_str()),
+                    ("includevotes", "true"),
+                    ("includetags", "true"),
+                    ("strip_description_bbcode", "true"),
+                ]);
+
+            for (k, v) in &indexed {
+                req = req.query(&[(k.as_str(), v.as_str())]);
+            }
+
+            match req.send().await {
+                Ok(r) => { resp3 = Some(r); break; }
+                Err(_) if attempt < 2 => {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(_) => {}
+            }
+        }
+
+        if let Some(resp3) = resp3 {
+            if resp3.status().is_success() {
+                if let Ok(wrapper) = resp3.json::<DetailWrapper>().await {
+                    items.extend(wrapper.response.publishedfiledetails);
+                }
+            }
+        }
+    }
+
+    // Resolve creator names for all items
+    let unique_ids: Vec<String> = items
+        .iter()
+        .map(|m| m.creator.clone())
+        .filter(|id| !id.is_empty())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if !unique_ids.is_empty() {
+        let names = resolve_creator_names(&api_key, &unique_ids).await;
+        for item in &mut items {
+            if let Some(name) = names.get(&item.creator) {
+                item.creator_name = name.clone();
+            }
+        }
+    }
+
+    Ok(CollectionFullDetail { collection, items })
 }

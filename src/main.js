@@ -21,6 +21,10 @@ function switchTab(tab) {
     if (tab === "installed") {
         loadInstalledMods();
     }
+    // Auto-load collections when tab is selected
+    if (tab === "collections" && currentCollections.length === 0) {
+        searchCollections();
+    }
     // Render logs if settings
     if (tab === "settings") {
         renderLogs();
@@ -33,6 +37,27 @@ function showAlert(containerId, message, type = "error") {
     el.className = `alert ${type}`;
     el.textContent = message;
     addLog(`[Alert] ${message}`, type);
+}
+
+// Retry wrapper for transient HTTP errors
+async function invokeWithRetry(cmd, args, retries = 2) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            return await invoke(cmd, args);
+        } catch (e) {
+            const msg = String(e);
+            const isTransient = msg.includes("HTTP request failed") ||
+                msg.includes("error sending request") ||
+                msg.includes("connection") ||
+                msg.includes("timed out");
+            if (isTransient && attempt < retries) {
+                addLog(`[Retry] ${cmd} attempt ${attempt + 1} failed, retrying...`, "warn");
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+            }
+            throw e;
+        }
+    }
 }
 
 function hideAlert(containerId) {
@@ -321,8 +346,9 @@ async function searchMods(cursor = "") {
     // A mod that is "Human" AND "Vehicle" will be SHOWN (because it matches Vehicle).
     // This is "Match Any" logic. It works.
 
+    hideAlert("mods-alert");
     try {
-        const data = await invoke("search_mods_cmd", {
+        const data = await invokeWithRetry("search_mods_cmd", {
             query,
             cursor,
             sortType,
@@ -663,7 +689,7 @@ async function openModDetail(publishedFileId) {
     document.getElementById("content").scrollTop = 0;
 
     try {
-        const mod = await invoke("get_mod_details_cmd", { publishedFileId: publishedFileId });
+        const mod = await invokeWithRetry("get_mod_details_cmd", { publishedFileId: publishedFileId });
         renderModDetail(mod);
     } catch (e) {
         document.getElementById("detail-loading").style.display = "none";
@@ -814,10 +840,317 @@ function closeDetail() {
     });
 }
 
+// ── Collections ──────────────────────────────────
+let currentCollections = [];
+let collectionsNextCursor = "";
+let collectionsLoading = false;
+let collSortDesc = true;
+
+function toggleCollSortDir() {
+    collSortDesc = !collSortDesc;
+    updateCollSortDirBtn();
+    searchCollections();
+}
+
+function updateCollSortDirBtn() {
+    const btn = document.getElementById("coll-sort-dir-btn");
+    const sortType = document.getElementById("coll-sort-type").value;
+
+    // Only show for "Top Rated" (0) which supports Ascending
+    if (sortType === "0") {
+        btn.style.display = "flex";
+    } else {
+        btn.style.display = "none";
+    }
+
+    btn.textContent = collSortDesc ? "▼" : "▲";
+    btn.title = collSortDesc ? "Descending" : "Ascending";
+}
+
+async function searchCollections(cursor) {
+    const query = document.getElementById("collections-search-input").value.trim();
+    const loadingEl = document.getElementById("collections-loading");
+    const loadMoreEl = document.getElementById("collections-load-more");
+    const emptyEl = document.getElementById("collections-empty");
+
+    if (collectionsLoading) return;
+    collectionsLoading = true;
+
+    updateCollSortDirBtn();
+
+    if (!cursor) {
+        currentCollections = [];
+        collectionsNextCursor = "";
+        document.getElementById("collections-list").innerHTML = "";
+        loadingEl.classList.remove("hidden");
+        emptyEl.classList.add("hidden");
+    } else {
+        loadMoreEl.classList.remove("hidden");
+    }
+
+    // Read sort controls
+    let sortType = parseInt(document.getElementById("coll-sort-type").value);
+    const sortDays = parseInt(document.getElementById("coll-sort-days").value);
+
+    // Apply Sort Direction Mapping
+    if (!collSortDesc) {
+        if (sortType === 0) {
+            sortType = 10; // RankedByTotalVotesAsc
+        }
+    }
+
+    hideAlert("collections-alert");
+    try {
+        const data = await invokeWithRetry("search_collections_cmd", {
+            query,
+            cursor: cursor || "",
+            sortType,
+            days: sortDays,
+        });
+
+        if (data && data.publishedfiledetails) {
+            if (data.publishedfiledetails.length === 0 && !cursor) {
+                emptyEl.classList.remove("hidden");
+                collectionsNextCursor = "";
+            } else {
+                emptyEl.classList.add("hidden");
+                if (!cursor) {
+                    currentCollections = data.publishedfiledetails;
+                } else {
+                    currentCollections = [...currentCollections, ...data.publishedfiledetails];
+                }
+                collectionsNextCursor = data.next_cursor || "";
+                renderCollections();
+            }
+        }
+    } catch (e) {
+        const msg = String(e);
+        if (msg.includes("API Key")) {
+            showAlert("collections-alert", "Steam API Key not configured. Go to Settings to add one.", "error");
+        } else {
+            showAlert("collections-alert", "Failed to load collections: " + msg, "error");
+        }
+    } finally {
+        loadingEl.classList.add("hidden");
+        loadMoreEl.classList.add("hidden");
+        collectionsLoading = false;
+    }
+}
+
+function renderCollections() {
+    const list = document.getElementById("collections-list");
+    list.innerHTML = "";
+
+    currentCollections.forEach((coll) => {
+        const row = document.createElement("div");
+        row.className = "collection-item";
+
+        const imgSrc = coll.preview_url || "https://via.placeholder.com/120x68?text=No+Image";
+        const desc = coll.short_description || coll.file_description || "";
+        const truncDesc = desc.length > 150 ? desc.substring(0, 150) + "..." : desc;
+        const author = coll.creator_name || "";
+
+        // Star rating
+        const score = coll.vote_data ? coll.vote_data.score : 0;
+        const starCount = Math.round(score * 5);
+        let starsHtml = "";
+        for (let i = 1; i <= 5; i++) {
+            starsHtml += `<span class="star ${i <= starCount ? 'filled' : ''}">★</span>`;
+        }
+
+        row.innerHTML = `
+            <img class="collection-item-img" src="${imgSrc}" alt="${escapeHtml(coll.title)}" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 120 68\\' fill=\\'%23333\\' %3E%3Crect width=\\'120\\' height=\\'68\\' /%3E%3C/svg%3E'" />
+            <div class="collection-item-info">
+                <div class="collection-item-title">${escapeHtml(coll.title)}</div>
+                <div class="collection-item-meta">
+                    ${author ? `<span>by ${escapeHtml(author)}</span>` : ""}
+                    <span class="collection-item-stars">${starsHtml}</span>
+                </div>
+                ${truncDesc ? `<div class="collection-item-desc">${escapeHtml(truncDesc)}</div>` : ""}
+            </div>
+            <svg class="collection-item-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6" />
+            </svg>
+        `;
+
+        row.style.cursor = "pointer";
+        row.onclick = () => openCollectionDetail(coll.publishedfileid);
+        list.appendChild(row);
+    });
+}
+
+async function openCollectionDetail(collectionId) {
+    previousTab = "collections";
+
+    // Switch to collection detail tab
+    document.querySelectorAll(".tab-content").forEach(s => s.classList.remove("active"));
+    document.getElementById("tab-collection-detail").classList.add("active");
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+
+    // Show loading
+    document.getElementById("coll-detail-loading").style.display = "flex";
+    document.getElementById("coll-detail-content").style.display = "none";
+    document.getElementById("content").scrollTop = 0;
+
+    try {
+        const data = await invokeWithRetry("get_collection_details_cmd", { collectionId });
+        renderCollectionDetail(data);
+    } catch (e) {
+        document.getElementById("coll-detail-loading").style.display = "none";
+        document.getElementById("coll-detail-content").style.display = "block";
+        document.getElementById("coll-detail-title").textContent = "Error loading collection";
+        document.getElementById("coll-detail-description").textContent = String(e);
+    }
+}
+
+function renderCollectionDetail(data) {
+    const coll = data.collection;
+    const items = data.items;
+    currentCollectionItems = items; // Store for Install All logic
+
+    document.getElementById("coll-detail-loading").style.display = "none";
+    document.getElementById("coll-detail-content").style.display = "block";
+
+    // Header
+    document.getElementById("coll-detail-title").textContent = coll.title || "Untitled Collection";
+    renderStars(coll.vote_data ? coll.vote_data.score : 0, "coll-detail-stars");
+
+    const icon = document.getElementById("coll-detail-icon");
+    icon.src = coll.preview_url || "";
+    icon.alt = coll.title || "";
+
+    // Meta
+    const metaEl = document.getElementById("coll-detail-meta");
+    let metaHtml = "";
+    if (coll.creator_name) metaHtml += `<span>by <strong>${escapeHtml(coll.creator_name)}</strong></span>`;
+    if (coll.time_created) metaHtml += `<span>Created: ${new Date(coll.time_created * 1000).toLocaleDateString()}</span>`;
+    if (coll.time_updated) metaHtml += `<span>Updated: ${new Date(coll.time_updated * 1000).toLocaleDateString()}</span>`;
+    metaEl.innerHTML = metaHtml;
+
+    // Description
+    document.getElementById("coll-detail-description").textContent = coll.file_description || "No description.";
+
+    // Tags
+    const tagsEl = document.getElementById("coll-detail-tags");
+    if (coll.tags && coll.tags.length > 0) {
+        tagsEl.innerHTML = coll.tags.map(t => `<span class="detail-tag">${escapeHtml(t.display_name || t.tag)}</span>`).join("");
+    } else {
+        tagsEl.innerHTML = "";
+    }
+
+    // Workshop link
+    const link = document.getElementById("coll-detail-workshop-link");
+    link.href = `https://steamcommunity.com/sharedfiles/filedetails/?id=${coll.publishedfileid}`;
+
+    // Items count
+    document.getElementById("coll-detail-items-count").textContent = `Items in this Collection (${items.length})`;
+
+    // Render items list
+    const list = document.getElementById("coll-detail-items-list");
+    list.innerHTML = "";
+
+    items.forEach((mod) => {
+        const row = document.createElement("div");
+        row.className = "installed-item";
+
+        const imgSrc = mod.preview_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23333'%3E%3Crect width='64' height='64'/%3E%3C/svg%3E";
+        const desc = mod.file_description ? escapeHtml(mod.file_description.substring(0, 120)) : "";
+        const isInstalled = installedModsCache.some(m => m.ugc_id === mod.publishedfileid);
+
+        row.innerHTML = `
+            <img class="installed-item-img" src="${imgSrc}" alt="${escapeHtml(mod.title)}" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 64 64\\' fill=\\'%23333\\' %3E%3Crect width=\\'64\\' height=\\'64\\' /%3E%3C/svg%3E'" />
+            <div class="installed-item-info">
+                <div class="installed-item-title">${escapeHtml(mod.title || "Untitled")}</div>
+                <div class="installed-item-meta">
+                    ${mod.creator_name ? `<span>by ${escapeHtml(mod.creator_name)}</span>` : ""}
+                </div>
+                ${desc ? `<div class="installed-item-desc">${desc}</div>` : ""}
+            </div>
+            <button class="collection-install-btn ${isInstalled ? 'installed' : ''}" ${isInstalled ? 'disabled' : ''}
+                data-id="${mod.publishedfileid}"
+                onclick="event.stopPropagation(); installMod('${mod.publishedfileid}', '${escapeHtml(mod.title || 'Untitled').replace(/'/g, "\\'")}', this)">
+                ${isInstalled ? 'Installed' : 'Install'}
+            </button>
+        `;
+
+        row.style.cursor = "pointer";
+        row.onclick = () => openModDetail(mod.publishedfileid);
+        list.appendChild(row);
+    });
+
+    // Update Install All button visibility
+    const installAllBtn = document.getElementById("coll-install-all-btn");
+    const installableCount = items.filter(m => !installedModsCache.some(i => i.ugc_id === m.publishedfileid)).length;
+
+    if (installableCount > 0) {
+        installAllBtn.style.display = "block";
+        installAllBtn.textContent = `Install All (${installableCount})`;
+        installAllBtn.disabled = false;
+        installAllBtn.onclick = () => installAllCollectionMods(installableCount);
+    } else {
+        installAllBtn.style.display = "none";
+    }
+}
+
+let currentCollectionItems = []; // Track items for Install All
+
+async function installAllCollectionMods(count) {
+    if (!confirm(`Are you sure you want to install ${count} mods from this collection?`)) return;
+
+    // Filter only installable items
+    const toInstall = currentCollectionItems.filter(m => !installedModsCache.some(i => i.ugc_id === m.publishedfileid));
+
+    addLog(`[BatchInstall] Starting batch install of ${toInstall.length} mods`, "info");
+
+    // Iterate and trigger installMod for each
+    // We intentionally do not await the entire process, but we do want to stagger them slightly
+    // or just let the queue handle it. 
+    // installMod adds to downloadQueue. The queue processor handles one by one.
+    // So we can just fire them all!
+
+    for (const mod of toInstall) {
+        // Find the button to update its state
+        // We added data-id to buttons
+        const btn = document.querySelector(`.collection-install-btn[data-id="${mod.publishedfileid}"]`);
+        if (btn && !btn.disabled) {
+            installMod(mod.publishedfileid, mod.title || "Untitled", btn);
+        }
+    }
+}
+
+function closeCollectionDetail() {
+    document.querySelectorAll(".tab-content").forEach(s => s.classList.remove("active"));
+    document.getElementById("tab-collections").classList.add("active");
+    document.querySelectorAll(".nav-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.tab === "collections");
+    });
+}
+
 // ── Keyboard shortcut: Enter to search ──────────
 document.getElementById("search-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") searchMods();
 });
+document.getElementById("collections-search-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") searchCollections();
+});
+
+// Collections infinite scroll
+let collectionsObserver = null;
+function setupCollectionsObserver() {
+    if (collectionsObserver) collectionsObserver.disconnect();
+
+    collectionsObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (entry.isIntersecting && collectionsNextCursor) {
+                searchCollections(collectionsNextCursor);
+            }
+        });
+    }, { root: null, rootMargin: "0px", threshold: 0.1 });
+
+    const target = document.getElementById("collections-load-more");
+    if (target) collectionsObserver.observe(target);
+}
+setupCollectionsObserver();
 
 // ── Init ────────────────────────────────────────
 
@@ -862,7 +1195,7 @@ async function loadInstalledMods() {
     loading.style.display = "flex";
 
     try {
-        const mods = await invoke("list_installed_mods");
+        const mods = await invokeWithRetry("list_installed_mods", {});
 
         if (mods.length === 0) {
             loading.style.display = "none";

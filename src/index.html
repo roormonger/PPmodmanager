@@ -26,7 +26,19 @@
                             <circle cx="11" cy="11" r="8" />
                             <line x1="21" y1="21" x2="16.65" y2="16.65" />
                         </svg>
-                        Browse Mods
+                        Mods
+                    </button>
+                </li>
+                <li>
+                    <button class="nav-btn" data-tab="collections" onclick="switchTab('collections')">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7" />
+                            <rect x="14" y="3" width="7" height="7" />
+                            <rect x="3" y="14" width="7" height="7" />
+                            <rect x="14" y="14" width="7" height="7" />
+                        </svg>
+                        Collections
                     </button>
                 </li>
                 <li>
@@ -210,6 +222,112 @@
                 </div>
 
                 <div id="installed-list" class="installed-list"></div>
+            </section>
+
+            <!-- Collections Tab -->
+            <section id="tab-collections" class="tab-content">
+                <div class="content-header">
+                    <h1>Collections</h1>
+                    <div class="search-bar">
+                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <input type="text" id="collections-search-input" placeholder="Search collections..." />
+                        <button id="collections-search-btn" onclick="searchCollections()">Search</button>
+                    </div>
+                </div>
+
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>Sort by</label>
+                        <select id="coll-sort-type" onchange="searchCollections()">
+                            <option value="3" selected>Trending</option>
+                            <option value="12">Relevance</option>
+                            <option value="9">Most Subscribed</option>
+                            <option value="1">Most Recent</option>
+                            <option value="0">Top Rated</option>
+                        </select>
+                        <button id="coll-sort-dir-btn" class="icon-btn" onclick="toggleCollSortDir()"
+                            title="Toggle Sort Direction">
+                            ▼
+                        </button>
+                    </div>
+                    <div class="filter-group">
+                        <label>Over time period</label>
+                        <select id="coll-sort-days">
+                            <option value="1">Today</option>
+                            <option value="7" selected>One Week</option>
+                            <option value="30">Thirty Days</option>
+                            <option value="90">Three Months</option>
+                            <option value="180">Six Months</option>
+                            <option value="365">One Year</option>
+                            <option value="0">All Time</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="collections-alert" class="alert hidden"></div>
+                <div id="collections-loading" class="loading-state hidden">
+                    <div class="spinner"></div>
+                    <span>Loading collections...</span>
+                </div>
+
+                <div id="collections-empty" class="installed-empty hidden">
+                    <p>No collections found.</p>
+                </div>
+
+                <div id="collections-list" class="collections-list"></div>
+
+                <div id="collections-load-more" class="load-more-container hidden">
+                    <div class="spinner"></div>
+                    <span>Loading more...</span>
+                </div>
+            </section>
+
+            <!-- Collection Detail View -->
+            <section id="tab-collection-detail" class="tab-content">
+                <div class="detail-header">
+                    <button class="detail-back-btn" onclick="closeCollectionDetail()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                        Back
+                    </button>
+                    <div class="detail-loading hidden" id="coll-detail-loading">
+                        <div class="spinner"></div>
+                        <span>Loading collection...</span>
+                    </div>
+                </div>
+
+                <div id="coll-detail-content" class="coll-detail-layout" style="display:none;">
+                    <!-- Collection header -->
+                    <div class="coll-detail-header-card">
+                        <img id="coll-detail-icon" class="coll-detail-icon" src="" alt="" />
+                        <div class="coll-detail-info">
+                            <h1 id="coll-detail-title" class="detail-title"></h1>
+                            <div id="coll-detail-stars" class="detail-stars"></div>
+                            <div id="coll-detail-meta" class="coll-detail-meta"></div>
+                            <div id="coll-detail-description" class="coll-detail-description"></div>
+                            <div id="coll-detail-tags" class="detail-tags"></div>
+                            <a id="coll-detail-workshop-link" class="detail-workshop-link" href="" target="_blank">
+                                View on Steam Workshop →
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Items in collection -->
+                    <div class="coll-detail-items-header"
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h2 id="coll-detail-items-count" style="margin: 0; font-size: 15px;">Items in this Collection
+                        </h2>
+                        <button id="coll-install-all-btn" class="collection-install-btn"
+                            onclick="installAllCollectionMods()">Install All</button>
+                    </div>
+                    <div id="coll-detail-items-list" class="installed-list"></div>
+                </div>
             </section>
 
             <!-- Mod Detail View -->
