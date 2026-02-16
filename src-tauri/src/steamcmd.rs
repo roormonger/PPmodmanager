@@ -434,19 +434,14 @@ fn find_thumbnail(mod_dir: &Path) -> Option<String> {
             // We'll search for typical image files.
             let is_image = fname.ends_with(".png") || fname.ends_with(".jpg") || fname.ends_with(".jpeg");
             if is_image {
-                // Heuristic: Prefer "thumb" prefix or matching folder name, but for now take any image?
-                // Actually, for consistency let's stick to "thumb*" OR ".png" if it matches folder?
-                // Let's broaden: just any image that seems to be a thumbnail? 
-                // Existing logic was "starts_with('thumb')". 
-                // For Contraptions, it's usually "Name.png".
-                
-                if fname.starts_with("thumb") || fname.ends_with(".png") { 
-                    if let Ok(bytes) = fs::read(&p) {
-                         let mime = if fname.ends_with(".png") { "image/png" } else { "image/jpeg" };
-                         use base64::Engine;
-                         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                         return Some(format!("data:{};base64,{}", mime, b64));
-                    }
+                // Read and return the first image found.
+                // Improve priority? Maybe prefer "thumb"?
+                // For now, any image is better than none.
+                 if let Ok(bytes) = fs::read(&p) {
+                     let mime = if fname.ends_with(".png") { "image/png" } else { "image/jpeg" };
+                     use base64::Engine;
+                     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                     return Some(format!("data:{};base64,{}", mime, b64));
                 }
             }
         }

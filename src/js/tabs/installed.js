@@ -66,8 +66,12 @@ export async function loadContraptions() {
 
         state.contraptionsCache = items;
 
+        // Fetch details for each mod from Steam API to get titles/images
+        // (Reuse enrichInstalledMods logic)
+        const enriched = await enrichInstalledMods(items);
+
         if (loading) loading.classList.add("hidden");
-        renderInstalledMods(items, 'contraption');
+        renderInstalledMods(enriched, 'contraption');
     } catch (e) {
         if (loading) loading.classList.add("hidden");
         console.error("Contraptions load error:", e);
@@ -126,19 +130,28 @@ export function renderInstalledMods(items, type = "mod") {
             <img class="installed-item-img" src="${thumbSrc}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 64 64\\' fill=\\'%23222\\' %3E%3Crect width=\\'64\\' height=\\'64\\' /%3E%3C/svg%3E'" />
             <div class="installed-item-info">
                 <div class="installed-item-title">${escapeHtml(title)}</div>
-                <div class="installed-item-meta">
-                    <span>${escapeHtml(author)}</span> • <span>${size}</span>
+                <div class="installed-item-meta" style="color: var(--text-secondary); margin-bottom: 2px;">
+                    ${escapeHtml(author)}
+                </div>
+                <div class="installed-item-meta" style="opacity: 0.7;">
+                    ${escapeHtml(mod.folder_name)} - ${size}
                 </div>
                 ${desc ? `<div class="installed-item-desc">${escapeHtml(desc)}</div>` : ""}
             </div>
             <button class="installed-delete-btn" onclick="event.stopPropagation(); deleteInstalledItem('${escapeJs(mod.folder_name)}', '${type}')">Delete</button>
         `;
 
-        if (type === 'mod' && mod.ugc_id) {
-            row.onclick = () => openModDetail(mod.ugc_id);
-        } else {
-            row.style.cursor = "default";
-        }
+        row.style.cursor = "pointer";
+        row.onclick = (e) => {
+            // Prevent if clicking buttons
+            if (e.target.tagName === "BUTTON") return;
+
+            if (mod.ugc_id) {
+                openModDetail(mod.ugc_id);
+            } else {
+                createToast(mod.name || mod.folder_name, "error", "Cannot Open Detail", "This item is not linked to Steam Workshop.", 4000);
+            }
+        };
 
         container.appendChild(row);
     });
