@@ -164,34 +164,53 @@ function renderCollectionDetail(coll) {
     document.getElementById("coll-detail-content").style.display = "block";
 
     // Header Info
-    const imgSrc = coll.preview_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 113' fill='%23333'%3E%3Crect width='200' height='113' /%3E%3C/svg%3E";
+    // The backend returns { collection: {...}, items: [...] }
+    const c = coll.collection || coll;
+
+    const imgSrc = c.preview_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 113' fill='%23333'%3E%3Crect width='200' height='113' /%3E%3C/svg%3E";
     document.getElementById("coll-detail-icon").src = imgSrc;
-    document.getElementById("coll-detail-title").textContent = coll.title;
+    document.getElementById("coll-detail-title").textContent = c.title;
 
     // Meta
-    const date = coll.time_updated ? new Date(coll.time_updated * 1000).toLocaleDateString() : "Unknown";
-    const author = coll.creator_name || "Unknown";
+    const date = c.time_updated ? new Date(c.time_updated * 1000).toLocaleDateString() : "Unknown";
+    const author = c.creator_name || "Unknown";
     const metaEl = document.getElementById("coll-detail-meta");
     metaEl.innerHTML = `<span>By ${escapeHtml(author)}</span> • <span>Updated ${date}</span>`;
 
-    document.getElementById("coll-detail-description").textContent = coll.file_description || "";
+    document.getElementById("coll-detail-description").textContent = c.file_description || "";
 
     // Render Items
     const list = document.getElementById("coll-detail-items-list");
     list.innerHTML = "";
 
-    if (!coll.children || coll.children.length === 0) {
+    // Backend returns 'items' (enriched ModDetail list)
+    // 'collection' (flattened) might have 'children' (raw list of IDs)
+    // We want 'items'.
+    const items = coll.items || coll.children;
+
+    if (!items || items.length === 0) {
         list.innerHTML = `<div style="padding: 20px; color: var(--text-muted);">No items in this collection.</div>`;
         return;
     }
 
-    coll.children.forEach(child => {
+    // Update count header
+    document.getElementById("coll-detail-items-count").textContent = `Items in this Collection (${items.length})`;
+
+    items.forEach(child => {
         // Child is a PublishedFileDetail (mostly)
         // Check if installed
         // Reuse install logic?
 
         const row = document.createElement("div");
         row.className = "installed-item"; // Reuse styling
+        row.style.cursor = "pointer"; // Indicate clickable
+
+        // Navigate to mod detail on click (excluding install button)
+        row.onclick = (e) => {
+            // Prevent if clicking the install/delete button
+            if (e.target.tagName === "BUTTON") return;
+            openModDetail(child.publishedfileid);
+        };
 
         let thumb = child.preview_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23222'%3E%3Crect width='64' height='64' /%3E%3C/svg%3E";
 
@@ -201,12 +220,22 @@ function renderCollectionDetail(coll) {
             <img class="installed-item-img" src="${thumb}" alt="${escapeHtml(child.title)}" loading="lazy" />
             <div class="installed-item-info">
                 <div class="installed-item-title">${escapeHtml(child.title)}</div>
+                <div class="installed-item-meta">
+                    ${child.creator_name ? `<span>by ${escapeHtml(child.creator_name)}</span>` : ""}
+                </div>
             </div>
-            <button class="collection-install-btn ${isInstalled ? 'installed' : ''}" 
-                onclick="event.stopPropagation(); installCollectionItem('${child.publishedfileid}', '${escapeJs(child.title)}', this)">
-                ${isInstalled ? 'Installed' : 'Install'}
-            </button>
+            <div class="installed-item-actions">
+                ${isInstalled
+                ? `<button class="btn-outline installed" disabled>Installed</button>`
+                : `<button class="btn-primary small" onclick="installCollectionItem('${child.publishedfileid}')">Install</button>`
+            }
+            </div>
         `;
+
+        // Re-attach specific onclick for the button to prevent bubbling or handle separately?
+        // the row.onclick handles filtering, but the button needs its own handler wired in HTML string?
+        // The HTML string onclick="installCollectionItem" works, but we also verify e.target in row.onclick.
+
         list.appendChild(row);
     });
 }
