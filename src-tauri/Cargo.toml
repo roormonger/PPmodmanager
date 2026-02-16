@@ -15,6 +15,7 @@ zip = "2"
 dirs = "6"
 base64 = "0.22"
 md5 = "0.7"
+tauri-plugin-dialog = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

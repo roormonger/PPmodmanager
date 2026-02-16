@@ -178,8 +178,19 @@
 
                     <div class="form-group">
                         <label for="pp-dir">People Playground Mods Folder</label>
-                        <input type="text" id="pp-dir"
-                            placeholder="C:\Program Files (x86)\Steam\steamapps\common\People Playground\Mods" />
+                        <div style="display: flex; gap: 10px; width: 100%;">
+                            <input type="text" id="pp-dir" style="flex: 1;"
+                                placeholder="C:\Program Files (x86)\Steam\steamapps\common\People Playground\Mods" />
+                            <button class="icon-btn" onclick="browseForFolder()" title="Browse Folder"
+                                style="height: auto; width: 40px; border-radius: var(--radius-md);">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path
+                                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z">
+                                    </path>
+                                </svg>
+                            </button>
+                        </div>
                         <p class="helper-text">
                             Path to the Mods folder inside your People Playground install.
                             Required for downloading mods.

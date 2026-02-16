@@ -144,6 +144,23 @@ async function saveSettings() {
     }
 }
 
+async function browseForFolder() {
+    try {
+        const selected = await window.__TAURI__.dialog.open({
+            directory: true,
+            multiple: false,
+            title: "Select Mods Folder"
+        });
+
+        if (selected) {
+            document.getElementById("pp-dir").value = selected;
+        }
+    } catch (e) {
+        console.error("Failed to open dialog", e);
+        showAlert("settings-alert", "Failed to open folder picker: " + e, "error");
+    }
+}
+
 // ── Tags Logic ──────────────────────────────────
 const ALL_TAGS = [
     "Contraptions", "Building", "Fun", "Realistic", "Destructible",
