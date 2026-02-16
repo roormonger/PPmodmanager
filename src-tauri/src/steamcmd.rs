@@ -186,45 +186,113 @@ pub async fn install_mod(
     .await
     .map_err(|e| format!("Task error: {}", e))??;
 
-    // Move to mods folder
+    // Find mod.json (Gatekeeper)
+    let download_dir = Path::new(&download_path);
+    let mod_json_path = find_mod_json_recursive(download_dir)
+        .ok_or_else(|| "Error: This mod is invalid (missing mod.json). It cannot be installed.".to_string())?;
+    
+    // Use the directory containing mod.json as the root source
+    let src_root = mod_json_path.parent().unwrap_or(download_dir);
+
+    // Target (Mods/WorkshopID)
     let dest = Path::new(&config.people_playground_dir).join(&workshop_id_for_move);
-    move_dir(Path::new(&download_path), &dest).map_err(|e| {
-        format!(
-            "Download succeeded but failed to move to mods folder: {}",
-            e
-        )
-    })?;
-
-    Ok(format!(
-        "Mod {} installed successfully!",
-        workshop_id_for_move
-    ))
+    
+    // Copy with verification (Atomic Check-Copy-Check)
+    // We do NOT use move_dir here because we want to verify.
+    // Also we are copying from potentially a subfolder.
+    
+    match copy_dir_verified(src_root, &dest) {
+        Ok(_) => {
+            // Success! Cleanup the download folder
+            let _ = fs::remove_dir_all(&download_path);
+            Ok(format!("Mod {} installed successfully!", workshop_id_for_move))
+        }
+        Err(e) => {
+            // Failed. Cleanup destination to avoid partial install
+            let _ = fs::remove_dir_all(&dest);
+            Err(format!("Installation failed during verification: {}", e))
+        }
+    }
 }
 
-fn move_dir(src: &Path, dest: &Path) -> Result<(), String> {
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+// ── Validation Logic ────────────────────────────
+
+fn find_mod_json_recursive(dir: &Path) -> Option<PathBuf> {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = find_mod_json_recursive(&path) {
+                    return Some(found);
+                }
+            } else if let Some(name) = path.file_name() {
+                if name.to_string_lossy().eq_ignore_ascii_case("mod.json") {
+                    return Some(path);
+                }
+            }
+        }
     }
-    // Try rename first (fast, same volume)
-    if fs::rename(src, dest).is_ok() {
-        return Ok(());
-    }
-    // Fallback: recursive copy
-    copy_dir_recursive(src, dest)?;
-    fs::remove_dir_all(src).map_err(|e| e.to_string())?;
-    Ok(())
+    None
 }
 
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+fn compute_md5(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut context = md5::Context::new();
+    io::copy(&mut file, &mut context).map_err(|e| e.to_string())?;
+    let digest = context.compute();
+    Ok(format!("{:x}", digest))
+}
+
+fn copy_file_verified(src: &Path, dest: &Path) -> Result<(), String> {
+    let mut attempts = 0;
+    const MAX_ATTEMPTS: i32 = 3;
+
+    loop {
+        attempts += 1;
+        
+        // 1. Hash Source
+        let src_hash = compute_md5(src).map_err(|e| format!("Failed to hash source: {}", e))?;
+        
+        // 2. Copy
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        fs::copy(src, dest).map_err(|e| format!("Copy failed: {}", e))?;
+        
+        // 3. Hash Dest
+        let dest_hash = compute_md5(dest).map_err(|e| format!("Failed to hash dest: {}", e))?;
+        
+        // 4. Compare
+        if src_hash == dest_hash {
+            return Ok(());
+        }
+        
+        // Mismatch
+        println!("Hash mismatch for {:?} (Attempt {}/{})", src.file_name(), attempts, MAX_ATTEMPTS);
+        
+        if attempts >= MAX_ATTEMPTS {
+            return Err(format!("File verification failed after {} attempts for {:?}", MAX_ATTEMPTS, src.file_name()));
+        }
+        
+        // Delete bad copy and retry
+        let _ = fs::remove_file(dest);
+    }
+}
+
+fn copy_dir_verified(src: &Path, dest: &Path) -> Result<(), String> {
+    if !dest.exists() {
+        fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    }
+
     for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let src_path = entry.path();
         let dest_path = dest.join(entry.file_name());
+
         if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dest_path)?;
+            copy_dir_verified(&src_path, &dest_path)?;
         } else {
-            fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
+            copy_file_verified(&src_path, &dest_path)?;
         }
     }
     Ok(())
