@@ -139,6 +139,8 @@ pub async fn install_mod(
 
     let workshop_id_for_move = workshop_id.clone();
     let app_id = "1118200"; // People Playground
+    // ── Logic ─────────────────────────────────────────
+
     let download_path = tokio::task::spawn_blocking(move || {
         // Try first attempt
         match download_workshop_item(app_id, &workshop_id) {
@@ -186,36 +188,59 @@ pub async fn install_mod(
     .await
     .map_err(|e| format!("Task error: {}", e))??;
 
-    // Find mod.json (Gatekeeper)
-    let download_dir = Path::new(&download_path);
-    let mod_json_path = find_mod_json_recursive(download_dir)
-        .ok_or_else(|| "Error: This mod is invalid (missing mod.json). It cannot be installed.".to_string())?;
-    
-    // Use the directory containing mod.json as the root source
-    let src_root = mod_json_path.parent().unwrap_or(download_dir);
+    // 1. Determine Game Root (Handle legacy "Mods" path)
+    let config_path = Path::new(&config.people_playground_dir);
+    let game_root = if config_path.ends_with("Mods") || config_path.ends_with("mods") {
+        config_path.parent().unwrap_or(config_path)
+    } else {
+        config_path
+    };
 
-    // Target (Mods/WorkshopID)
-    let dest = Path::new(&config.people_playground_dir).join(&workshop_id_for_move);
+    // 2. Classify Content (Mod vs Contraption)
+    let download_dir = Path::new(&download_path);
     
-    // Copy with verification (Atomic Check-Copy-Check)
-    // We do NOT use move_dir here because we want to verify.
-    // Also we are copying from potentially a subfolder.
-    
-    match copy_dir_verified(src_root, &dest) {
-        Ok(_) => {
-            // Success! Cleanup the download folder
-            let _ = fs::remove_dir_all(&download_path);
-            Ok(format!("Mod {} installed successfully!", workshop_id_for_move))
+    // Check for Mod (mod.json)
+    if let Some(mod_json_path) = find_mod_json_recursive(download_dir) {
+        // It's a MOD
+        let src_root = mod_json_path.parent().unwrap_or(download_dir);
+        let dest = game_root.join("Mods").join(&workshop_id_for_move);
+
+        match copy_dir_verified(src_root, &dest) {
+            Ok(_) => {
+                let _ = fs::remove_dir_all(&download_path);
+                Ok(format!("Mod {} installed successfully!", workshop_id_for_move))
+            }
+            Err(e) => {
+                let _ = fs::remove_dir_all(&dest);
+                Err(format!("Mod installation failed: {}", e))
+            }
         }
-        Err(e) => {
-            // Failed. Cleanup destination to avoid partial install
-            let _ = fs::remove_dir_all(&dest);
-            Err(format!("Installation failed during verification: {}", e))
+    } else if let Some(jaap_path) = find_jaap_recursive(download_dir) {
+        // It's a CONTRAPTION
+        let src_root = jaap_path.parent().unwrap_or(download_dir);
+        
+        // Get Name from .json (sibling to .jaap usually) or fallback to ID
+        let name = get_contraption_name(src_root).unwrap_or_else(|| workshop_id_for_move.clone());
+        let safe_name = sanitize_filename(&name);
+        
+        let dest = game_root.join("Contraptions").join(&safe_name);
+
+        match copy_dir_verified(src_root, &dest) {
+            Ok(_) => {
+                let _ = fs::remove_dir_all(&download_path);
+                Ok(format!("Contraption '{}' installed successfully!", name))
+            }
+            Err(e) => {
+                let _ = fs::remove_dir_all(&dest);
+                Err(format!("Contraption installation failed: {}", e))
+            }
         }
+    } else {
+        Err("Error: Unrecognized content. Missing 'mod.json' or '.jaap' file.".to_string())
     }
 }
 
-// ── Validation Logic ────────────────────────────
+// ── Validation Helpers ──────────────────────────
 
 fn find_mod_json_recursive(dir: &Path) -> Option<PathBuf> {
     if let Ok(entries) = fs::read_dir(dir) {
@@ -235,6 +260,51 @@ fn find_mod_json_recursive(dir: &Path) -> Option<PathBuf> {
     None
 }
 
+fn find_jaap_recursive(dir: &Path) -> Option<PathBuf> {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = find_jaap_recursive(&path) {
+                    return Some(found);
+                }
+            } else if let Some(ext) = path.extension() {
+                if ext.to_string_lossy() == "jaap" {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn get_contraption_name(dir: &Path) -> Option<String> {
+    // Look for any .json file and check for "Name" field
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |e| e == "json") {
+                 if let Ok(contents) = fs::read_to_string(&path) {
+                    if let Ok(parsed) = serde_json::from_str::<ModJson>(&contents) {
+                        if !parsed.name.is_empty() {
+                            return Some(parsed.name);
+                        }
+                    }
+                 }
+            }
+        }
+    }
+    None
+}
+
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+        .collect()
+}
+
+// ── Hashing & Copying ───────────────────────────
+
 fn compute_md5(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut context = md5::Context::new();
@@ -250,31 +320,25 @@ fn copy_file_verified(src: &Path, dest: &Path) -> Result<(), String> {
     loop {
         attempts += 1;
         
-        // 1. Hash Source
         let src_hash = compute_md5(src).map_err(|e| format!("Failed to hash source: {}", e))?;
         
-        // 2. Copy
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         fs::copy(src, dest).map_err(|e| format!("Copy failed: {}", e))?;
         
-        // 3. Hash Dest
         let dest_hash = compute_md5(dest).map_err(|e| format!("Failed to hash dest: {}", e))?;
         
-        // 4. Compare
         if src_hash == dest_hash {
             return Ok(());
         }
         
-        // Mismatch
         println!("Hash mismatch for {:?} (Attempt {}/{})", src.file_name(), attempts, MAX_ATTEMPTS);
         
         if attempts >= MAX_ATTEMPTS {
-            return Err(format!("File verification failed after {} attempts for {:?}", MAX_ATTEMPTS, src.file_name()));
+            return Err(format!("File verification failed after {} attempts", MAX_ATTEMPTS));
         }
         
-        // Delete bad copy and retry
         let _ = fs::remove_file(dest);
     }
 }
@@ -298,7 +362,7 @@ fn copy_dir_verified(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// ── Installed Mods ──────────────────────────────
+// ── Installed Items ─────────────────────────────
 
 use serde::{Deserialize as SerdeDeserialize, Serialize};
 
@@ -306,15 +370,10 @@ use serde::{Deserialize as SerdeDeserialize, Serialize};
 pub struct InstalledMod {
     pub folder_name: String,
     pub folder_size: u64,
-    /// Workshop ID: either folder name (if numeric) or CreatorUGCIdentity from JSON
     pub ugc_id: String,
-    /// Mod name from JSON, or folder name as fallback
     pub name: String,
-    /// Author from mod JSON
     pub author: String,
-    /// Description from mod JSON
     pub description: String,
-    /// Base64 data URL for local thumbnail (thumb*.png/jpg)
     pub thumbnail_data: String,
 }
 
@@ -345,7 +404,7 @@ fn dir_size(path: &Path) -> u64 {
     total
 }
 
-/// Find and parse the first .json file in a mod folder
+// Reuse parsing logic
 fn parse_mod_json(mod_dir: &Path) -> Option<ModJson> {
     if let Ok(entries) = fs::read_dir(mod_dir) {
         for entry in entries.flatten() {
@@ -353,9 +412,7 @@ fn parse_mod_json(mod_dir: &Path) -> Option<ModJson> {
             if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("json") {
                 if let Ok(contents) = fs::read_to_string(&p) {
                     if let Ok(parsed) = serde_json::from_str::<ModJson>(&contents) {
-                        if !parsed.name.is_empty() {
-                            return Some(parsed);
-                        }
+                        return Some(parsed);
                     }
                 }
             }
@@ -364,31 +421,32 @@ fn parse_mod_json(mod_dir: &Path) -> Option<ModJson> {
     None
 }
 
-/// Find a thumbnail file matching thumb*.png or thumb*.jpg (case-insensitive)
 fn find_thumbnail(mod_dir: &Path) -> Option<String> {
     if let Ok(entries) = fs::read_dir(mod_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if !p.is_file() {
-                continue;
-            }
+            if !p.is_file() { continue; }
             let fname = match p.file_name() {
                 Some(f) => f.to_string_lossy().to_lowercase(),
                 None => continue,
             };
-            let is_image =
-                fname.ends_with(".png") || fname.ends_with(".jpg") || fname.ends_with(".jpeg");
-            if is_image && fname.starts_with("thumb") {
-                // Read and base64 encode
-                if let Ok(bytes) = fs::read(&p) {
-                    let mime = if fname.ends_with(".png") {
-                        "image/png"
-                    } else {
-                        "image/jpeg"
-                    };
-                    use base64::Engine;
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    return Some(format!("data:{};base64,{}", mime, b64));
+            // Mod thumbnails often "thumb.png". Contraptions imply ".png" same as ".jaap".
+            // We'll search for typical image files.
+            let is_image = fname.ends_with(".png") || fname.ends_with(".jpg") || fname.ends_with(".jpeg");
+            if is_image {
+                // Heuristic: Prefer "thumb" prefix or matching folder name, but for now take any image?
+                // Actually, for consistency let's stick to "thumb*" OR ".png" if it matches folder?
+                // Let's broaden: just any image that seems to be a thumbnail? 
+                // Existing logic was "starts_with('thumb')". 
+                // For Contraptions, it's usually "Name.png".
+                
+                if fname.starts_with("thumb") || fname.ends_with(".png") { 
+                    if let Ok(bytes) = fs::read(&p) {
+                         let mime = if fname.ends_with(".png") { "image/png" } else { "image/jpeg" };
+                         use base64::Engine;
+                         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                         return Some(format!("data:{};base64,{}", mime, b64));
+                    }
                 }
             }
         }
@@ -407,71 +465,63 @@ pub async fn list_installed_mods(
     let mods_dir = {
         let config = state.0.lock().unwrap();
         if config.people_playground_dir.is_empty() {
-            return Err("Mods folder not set. Go to Settings to configure it.".to_string());
+             return Ok(vec![]);
         }
-        config.people_playground_dir.clone()
+        let p = Path::new(&config.people_playground_dir);
+        if p.ends_with("Mods") || p.ends_with("mods") { p.to_path_buf() } else { p.join("Mods") }
     };
 
-    let path = Path::new(&mods_dir);
-    if !path.exists() {
-        return Ok(vec![]);
-    }
+    scan_installed_items(&mods_dir)
+}
 
-    let entries = fs::read_dir(path).map_err(|e| format!("Failed to read mods folder: {}", e))?;
-
-    let mut mods = Vec::new();
-    for entry in entries.flatten() {
-        let dir_path = entry.path();
-        if !dir_path.is_dir() {
-            continue;
+#[tauri::command]
+pub async fn list_installed_contraptions(
+    state: tauri::State<'_, crate::config::ConfigState>,
+) -> Result<Vec<InstalledMod>, String> {
+     let contraptions_dir = {
+        let config = state.0.lock().unwrap();
+        if config.people_playground_dir.is_empty() {
+             return Ok(vec![]);
         }
+        let p = Path::new(&config.people_playground_dir);
+        let root = if p.ends_with("Mods") || p.ends_with("mods") { p.parent().unwrap() } else { p };
+        root.join("Contraptions")
+    };
 
-        let folder_name = entry.file_name().to_string_lossy().to_string();
-        let size = dir_size(&dir_path);
+    scan_installed_items(&contraptions_dir)
+}
 
-        // Parse mod JSON if present
-        let mod_json = parse_mod_json(&dir_path);
+fn scan_installed_items(dir: &Path) -> Result<Vec<InstalledMod>, String> {
+    if !dir.exists() { return Ok(vec![]); }
+    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
 
-        // Determine workshop/UGC ID
-        let ugc_id = if is_numeric(&folder_name) {
-            // Folder name IS the workshop ID
-            folder_name.clone()
-        } else if let Some(ref json) = mod_json {
-            // Use CreatorUGCIdentity from JSON
-            json.creator_ugc_identity.clone().unwrap_or_default()
-        } else {
-            String::new()
-        };
+    let mut items = Vec::new();
+    for entry in entries.flatten() {
+         let dir_path = entry.path();
+         if !dir_path.is_dir() { continue; }
 
-        // Get name, author, description from JSON or fallback
-        let name = mod_json
-            .as_ref()
-            .map(|j| j.name.clone())
-            .unwrap_or_else(|| folder_name.clone());
-        let author = mod_json
-            .as_ref()
-            .map(|j| j.author.clone())
-            .unwrap_or_default();
-        let description = mod_json
-            .as_ref()
-            .map(|j| j.description.clone())
-            .unwrap_or_default();
+         let folder_name = entry.file_name().to_string_lossy().to_string();
+         let size = dir_size(&dir_path);
+         let json = parse_mod_json(&dir_path);
 
-        // Find local thumbnail
-        let thumbnail_data = find_thumbnail(&dir_path).unwrap_or_default();
+         let ugc_id = if is_numeric(&folder_name) {
+             folder_name.clone()
+         } else if let Some(ref j) = json {
+             j.creator_ugc_identity.clone().unwrap_or_default()
+         } else {
+             String::new()
+         };
 
-        mods.push(InstalledMod {
-            folder_name,
-            folder_size: size,
-            ugc_id,
-            name,
-            author,
-            description,
-            thumbnail_data,
-        });
+         let name = json.as_ref().map(|j| j.name.clone()).unwrap_or_else(|| folder_name.clone());
+         let author = json.as_ref().map(|j| j.author.clone()).unwrap_or_default();
+         let description = json.as_ref().map(|j| j.description.clone()).unwrap_or_default();
+         let thumbnail_data = find_thumbnail(&dir_path).unwrap_or_default();
+
+         items.push(InstalledMod {
+             folder_name, folder_size: size, ugc_id, name, author, description, thumbnail_data
+         });
     }
-
-    Ok(mods)
+    Ok(items)
 }
 
 #[tauri::command]
@@ -479,20 +529,26 @@ pub async fn delete_installed_mod(
     state: tauri::State<'_, crate::config::ConfigState>,
     workshop_id: String,
 ) -> Result<String, String> {
-    let mods_dir = {
-        let config = state.0.lock().unwrap();
-        if config.people_playground_dir.is_empty() {
-            return Err("Mods folder not set.".to_string());
-        }
-        config.people_playground_dir.clone()
-    };
-
-    let mod_path = Path::new(&mods_dir).join(&workshop_id);
-    if !mod_path.exists() {
-        return Err(format!("Mod folder '{}' not found.", workshop_id));
+    // This needs to know if it's a mod or contraption?
+    // Or we just try to delete from both?
+    // Or the frontend passes a path/type?
+    // For now assuming ID is either FolderName (Mods) or Name (Contraptions).
+    
+    let config = state.0.lock().unwrap();
+    let p = Path::new(&config.people_playground_dir);
+    let root = if p.ends_with("Mods") || p.ends_with("mods") { p.parent().unwrap() } else { p };
+    
+    let mod_path = root.join("Mods").join(&workshop_id);
+    if mod_path.exists() {
+        fs::remove_dir_all(&mod_path).map_err(|e| e.to_string())?;
+        return Ok(format!("Mod {} deleted.", workshop_id));
+    }
+    
+    let contraption_path = root.join("Contraptions").join(&workshop_id); // Here ID might be Name
+    if contraption_path.exists() {
+        fs::remove_dir_all(&contraption_path).map_err(|e| e.to_string())?;
+        return Ok(format!("Contraption {} deleted.", workshop_id));
     }
 
-    fs::remove_dir_all(&mod_path).map_err(|e| format!("Failed to delete mod: {}", e))?;
-
-    Ok(format!("Mod {} deleted.", workshop_id))
+    Err(format!("Item '{}' not found in Mods or Contraptions.", workshop_id))
 }

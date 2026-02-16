@@ -29,6 +29,7 @@ pub fn run() {
             steamapi::get_mod_details_cmd,
             steamcmd::install_mod,
             steamcmd::list_installed_mods,
+            steamcmd::list_installed_contraptions,
             steamcmd::delete_installed_mod,
             steamapi::search_collections_cmd,
             steamapi::get_collection_details_cmd,

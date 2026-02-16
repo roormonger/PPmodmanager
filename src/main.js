@@ -420,7 +420,7 @@ function renderMods() {
         const date = mod.time_updated
             ? new Date(mod.time_updated * 1000).toLocaleDateString()
             : "";
-        const imgSrc = mod.preview_url || "https://via.placeholder.com/300x300?text=No+Image";
+        const imgSrc = mod.preview_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300' fill='%23222'%3E%3Crect width='300' height='300' /%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23666' font-family='sans-serif' font-size='24'%3ENo Image%3C/text%3E%3C/svg%3E";
 
         // Star rating from vote_data.score (0-1 → 5 stars)
         const score = mod.vote_data ? mod.vote_data.score : 0;
@@ -433,7 +433,7 @@ function renderMods() {
         const author = mod.creator_name || "";
 
         card.innerHTML = `
-            <img class="mod-card-img" src="${imgSrc}" alt="${escapeHtml(mod.title)}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'" />
+            <img class="mod-card-img" src="${imgSrc}" alt="${escapeHtml(mod.title)}" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 300 300\\' fill=\\'%23222\\' %3E%3Crect width=\\'300\\' height=\\'300\\' /%3E%3Ctext x=\\'50%25\\' y=\\'50%25\\' dominant-baseline=\\'middle\\' text-anchor=\\'middle\\' fill=\\'%23666\\' font-family=\\'sans-serif\\' font-size=\\'24\\' %3ENo Image%3C/text%3E%3C/svg%3E'" />
             <div class="mod-card-body">
                 <div class="mod-card-stars">${starsHtml}</div>
                 <div class="mod-card-title">${escapeHtml(mod.title)}</div>
@@ -686,13 +686,104 @@ function renderStars(score, containerId) {
 // ── Mod Detail View ─────────────────────────────
 let previousTab = "browse";
 
-async function openModDetail(publishedFileId) {
-    // Detect which tab we came from
-    const activeTab = document.querySelector(".tab-content.active");
-    if (activeTab && activeTab.id !== "tab-detail") {
-        previousTab = activeTab.id.replace("tab-", "");
-    }
 
+
+
+
+// ── Search & Filter Logic ───────────────────────
+// ...
+
+// ── Installed Items Logic ───────────────────────
+
+
+// ── Contraptions ────────────────────────────────
+let contraptionsCache = [];
+
+async function loadContraptions() {
+    const list = document.getElementById("contraptions-list");
+    const loading = document.getElementById("contraptions-loading");
+    const empty = document.getElementById("contraptions-empty");
+    const alert = document.getElementById("contraptions-alert");
+
+    list.innerHTML = "";
+    empty.style.display = "none";
+    alert.classList.add("hidden");
+    loading.style.display = "flex";
+
+    try {
+        const items = await invokeWithRetry("list_installed_contraptions", {});
+
+        if (items.length === 0) {
+            loading.style.display = "none";
+            empty.style.display = "block";
+            return;
+        }
+
+        contraptionsCache = items;
+        // Contraptions usually don't have Steam IDs we can query easily unless we tracked them.
+        // For now, display local info.
+        loading.style.display = "none";
+        renderInstalledMods(items, "contraption");
+    } catch (e) {
+        loading.style.display = "none";
+        showAlert("contraptions-alert", String(e));
+    }
+}
+
+// Reusing renderInstalledMods but making it generic
+// Reusing renderInstalledMods but making it generic
+function renderInstalledMods(items, type = "mod") {
+    const containerId = type === "mod" ? "installed-list" : "contraptions-list";
+    const container = document.getElementById(containerId);
+    if (!container) return; // Guard against missing container
+    container.innerHTML = "";
+
+    items.forEach(mod => {
+        const row = document.createElement("div");
+        row.className = "installed-item";
+
+        // If thumbnail exists (base64) use it, else placeholder
+        let thumbSrc = mod.thumbnail_data
+            ? `data:image/jpeg;base64,${mod.thumbnail_data}`
+            : "icon.png"; // Fallback
+
+        // If we enriched it with Steam data (only for mods usually)
+        if (mod.steam_image) thumbSrc = mod.steam_image;
+        if (!thumbSrc || thumbSrc === "icon.png") {
+            // Use our SVG fallback if no image
+            thumbSrc = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23222'%3E%3Crect width='64' height='64' /%3E%3C/svg%3E";
+        }
+
+        const title = mod.steam_title || mod.name || mod.folder_name;
+        const author = mod.author || "Unknown";
+        const size = formatBytes(mod.folder_size);
+        const desc = mod.description || (mod.file_description ? mod.file_description.substring(0, 120) : "");
+
+        row.innerHTML = `
+            <img class="installed-item-img" src="${thumbSrc}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 64 64\\' fill=\\'%23222\\' %3E%3Crect width=\\'64\\' height=\\'64\\' /%3E%3C/svg%3E'" />
+            <div class="installed-item-info">
+                <div class="installed-item-title">${escapeHtml(title)}</div>
+                <div class="installed-item-meta">
+                    <span>${escapeHtml(author)}</span> • <span>${size}</span>
+                </div>
+                ${desc ? `<div class="installed-item-desc">${escapeHtml(desc)}</div>` : ""}
+            </div>
+            <button class="installed-delete-btn" onclick="event.stopPropagation(); deleteInstalledItem('${escapeJs(mod.folder_name)}', '${type}')">Delete</button>
+        `;
+
+        // Open details if mod
+        if (type === 'mod' && mod.ugc_id) {
+            row.onclick = () => openModDetail(mod.ugc_id);
+        } else {
+            row.style.cursor = "default";
+        }
+
+        container.appendChild(row);
+    });
+}
+
+// Open Detail View
+async function openModDetail(publishedFileId) {
     // Switch to detail tab
     document.querySelectorAll(".tab-content").forEach(s => s.classList.remove("active"));
     document.getElementById("tab-detail").classList.add("active");
@@ -1232,100 +1323,57 @@ async function loadInstalledMods() {
     }
 }
 
+
 async function enrichInstalledMods(mods) {
     const results = [];
     for (const mod of mods) {
-        // Start with local metadata from JSON
-        let enriched = {
-            folder_name: mod.folder_name,
-            folder_size: mod.folder_size,
-            ugc_id: mod.ugc_id,
-            title: mod.name || mod.folder_name,
-            preview_url: mod.thumbnail_data || "",
-            file_description: mod.description || "",
-            creator_name: mod.author || "",
-        };
+        // Start with local metadata
+        // We clone the mod object so we don't mutate the original if we want to keep it clean,
+        // but here we just want to add properties for the renderer.
+        let enriched = { ...mod };
 
         // If we have a workshop/UGC ID, try to enrich with Steam API
         if (mod.ugc_id) {
             try {
                 const detail = await invoke("get_mod_details_cmd", { publishedFileId: mod.ugc_id });
-                enriched.title = detail.title || enriched.title;
-                enriched.preview_url = detail.preview_url || enriched.preview_url;
-                enriched.file_description = detail.file_description || enriched.file_description;
-                enriched.creator_name = detail.creator_name || enriched.creator_name;
+                // Map to the properties expected by renderInstalledMods (lines 734+)
+                // renderInstalledMods checks: mod.steam_title || mod.name || mod.folder_name
+                // renderInstalledMods checks: mod.steam_image (for thumb)
+                // renderInstalledMods checks: mod.author
+
+                enriched.steam_title = detail.title;
+                enriched.steam_image = detail.preview_url;
+                enriched.author = detail.creator_name || enriched.author;
             } catch {
                 // Steam API failed, keep local data
             }
         }
-
         results.push(enriched);
     }
     return results;
 }
 
-function renderInstalledMods(mods) {
-    const list = document.getElementById("installed-list");
-    list.innerHTML = "";
-
-    mods.forEach((mod) => {
-        const row = document.createElement("div");
-        row.className = "installed-item";
-
-        const imgSrc = mod.preview_url || "https://via.placeholder.com/64x64?text=?";
-        const desc = mod.file_description ? escapeHtml(mod.file_description.substring(0, 120)) : "";
-
-        row.innerHTML = `
-            <img class="installed-item-img" src="${imgSrc}" alt="${escapeHtml(mod.title)}" onerror="this.src='https://via.placeholder.com/64x64?text=?'" />
-            <div class="installed-item-info">
-                <div class="installed-item-title">${escapeHtml(mod.title)}</div>
-                <div class="installed-item-meta">
-                    ${mod.creator_name ? `<span>by ${escapeHtml(mod.creator_name)}</span>` : ""}
-                    <span>${formatBytes(mod.folder_size)}</span>
-                    ${mod.ugc_id ? `<span>ID: ${mod.ugc_id}</span>` : ""}
-                </div>
-                ${desc ? `<div class="installed-item-desc">${desc}</div>` : ""}
-            </div>
-            <button class="installed-delete-btn" onclick="event.stopPropagation(); deleteInstalledMod('${escapeHtml(mod.folder_name).replace(/'/g, "\\'")}', this)">Delete</button>
-        `;
-
-        // Only make clickable to detail if we have a workshop ID
-        if (mod.ugc_id) {
-            row.onclick = () => openModDetail(mod.ugc_id);
-        } else {
-            row.style.cursor = "default";
-        }
-        list.appendChild(row);
-    });
-}
-
-async function deleteInstalledMod(folderName, btn) {
-    // Two-click confirm
-    if (!btn.classList.contains("confirming")) {
-        btn.classList.add("confirming");
-        btn.textContent = "Confirm?";
-        setTimeout(() => {
-            if (btn.classList.contains("confirming")) {
-                btn.classList.remove("confirming");
-                btn.textContent = "Delete";
-            }
-        }, 3000);
-        return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = "Deleting...";
+// Delete item
+async function deleteInstalledItem(folderName, type = 'mod') {
+    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
 
     try {
         await invoke("delete_installed_mod", { workshopId: folderName });
-        createToast(folderName, "success", "Mod deleted", `${folderName} removed.`, 3000);
-        loadInstalledMods();
+        if (type === 'mod') {
+            loadInstalledMods();
+        } else {
+            loadContraptions();
+        }
+        createToast(folderName, "success", `${type} deleted`, `${folderName} removed.`, 3000);
     } catch (e) {
-        btn.disabled = false;
-        btn.classList.remove("confirming");
-        btn.textContent = "Delete";
-        createToast(folderName, "error", "Delete failed", String(e), 5000);
+        alert("Failed to delete: " + e);
     }
+}
+
+// Helper to escape single quotes for inline JS.
+function escapeJs(str) {
+    if (!str) return "";
+    return str.replace(/'/g, "\\'");
 }
 
 // ── Zoom Slider ─────────────────────────────────
