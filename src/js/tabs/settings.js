@@ -5,7 +5,7 @@ import { state } from "../state.js";
 // Load settings from backend and populate UI
 export async function loadSettings() {
     try {
-        const settings = await invoke("get_settings_cmd");
+        const settings = await invoke("get_config");
         if (settings) {
             state.settings = { ...state.settings, ...settings };
 
@@ -30,7 +30,7 @@ export async function saveSettings() {
     const gamePath = document.getElementById("pp-dir").value.trim();
 
     try {
-        await invoke("save_settings_cmd", {
+        await invoke("save_config_cmd", {
             apiKey,
             gamePath
         });

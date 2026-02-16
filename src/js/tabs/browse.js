@@ -1,7 +1,7 @@
 // Browse Tab Logic
 import { invokeWithRetry, formatBytes, escapeHtml, escapeJs, showAlert, hideAlert, addLog } from "../utils.js";
 import { state } from "../state.js";
-import { openModDetail } from "./browse.js"; // Recursive import for onclick, handled by modules fine usually
+
 
 // Re-export openModDetail so it can be used by other tabs if needed (e.g. from installed list)
 // actually openModDetail is defined below.
@@ -24,7 +24,7 @@ export async function searchMods(reset = true) {
         .map(cb => cb.value);
 
     // Initial loading UI
-    const loadingEl = document.getElementById("loading");
+    const loadingEl = document.getElementById("mods-loading");
     if (reset) {
         document.getElementById("mods-grid").innerHTML = "";
         loadingEl.classList.remove("hidden");
@@ -139,6 +139,7 @@ export function renderMods() {
 let previousTab = "browse";
 
 export async function openModDetail(publishedFileId) {
+    console.log(`[Browse] openModDetail called for ${publishedFileId}`);
     // Save current tab before switching (primitive way)
     const activeTab = document.querySelector(".tab-content.active");
     if (activeTab && activeTab.id !== "tab-detail") {
@@ -147,8 +148,15 @@ export async function openModDetail(publishedFileId) {
 
     // Switch UI (We might need to import switchTab or handle it manually here)
     // For now, let's just do class manipulation as in original code
-    document.querySelectorAll(".tab-content").forEach(s => s.classList.remove("active"));
-    document.getElementById("tab-detail").classList.add("active");
+    // Switch UI
+    document.querySelectorAll(".tab-content").forEach(s => {
+        s.classList.remove("active");
+        s.style.display = "none";
+    });
+    const detailTab = document.getElementById("tab-detail");
+    detailTab.classList.add("active");
+    detailTab.style.display = "block";
+
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
 
     // Show loading
@@ -177,19 +185,137 @@ function renderModDetail(mod) {
     document.getElementById("detail-title").textContent = mod.title;
 
     // Meta
-    const metaEl = document.getElementById("detail-meta");
+    // const metaEl = document.getElementById("detail-meta"); // Doesn't exist in index.html, we have individual fields
     const date = mod.time_updated ? new Date(mod.time_updated * 1000).toLocaleDateString() : "Unknown";
     const size = formatBytes(mod.file_size || 0);
     const author = mod.creator_name || "Unknown";
 
-    let html = `<span>By ${escapeHtml(author)}</span> • <span>${date}</span> • <span>${size}</span>`;
+    // Fill individual fields
+    const setIfExists = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
 
-    // Rating
+    setIfExists("detail-author", author);
+    setIfExists("detail-filesize", size);
+    setIfExists("detail-created", mod.time_created ? new Date(mod.time_created * 1000).toLocaleDateString() : "Unknown");
+    setIfExists("detail-updated", date);
+    setIfExists("detail-subs", mod.subscriptions || "N/A"); // API might not return this standardly?
+    setIfExists("detail-favs", mod.favorited || "N/A");
+    setIfExists("detail-views", mod.views || "N/A");
+
+    // Rating (Stars)
     const score = mod.vote_data ? mod.vote_data.score : 0;
-    const starCount = Math.round(score * 5).toFixed(1);
-    html += ` • <span style="color:#f59e0b">★ ${starCount}</span>`;
+    const starCount = Math.round(score * 5);
+    let starsHtml = "";
+    for (let i = 1; i <= 5; i++) {
+        starsHtml += `<span class="star ${i <= starCount ? 'filled' : ''}">★</span>`;
+    }
+    // Add text rating
+    starsHtml += ` <span style="color:var(--text-muted); font-size: 0.9em; margin-left: 5px;">(${starCount}/5)</span>`;
 
-    metaEl.innerHTML = html;
+    const starEl = document.getElementById("detail-stars");
+    if (starEl) starEl.innerHTML = starsHtml;
+
+    // Gallery Logic
+    const mainMedia = document.getElementById("detail-media-main");
+    const thumbContainer = document.getElementById("detail-thumbnails");
+
+    // Clear previous
+    if (mainMedia) mainMedia.innerHTML = "";
+    if (thumbContainer) thumbContainer.innerHTML = "";
+
+    // Helper to set main media
+    const setMainMedia = (url, isVideo) => {
+        if (!mainMedia) return;
+        mainMedia.innerHTML = "";
+        if (isVideo) {
+            // Extract video ID from youtube url if possible
+            // Format usually: https://www.youtube.com/watch?v=VIDEO_ID
+            let videoId = "";
+            try {
+                const u = new URL(url);
+                videoId = u.searchParams.get("v");
+                if (!videoId && url.includes("youtu.be/")) videoId = url.split("youtu.be/")[1];
+                if (!videoId && url.includes("/embed/")) videoId = url.split("/embed/")[1];
+
+                // Fallback for direct youtube link in additional_previews
+                // sometimes it's just the ID? API usually gives full url
+            } catch (e) { }
+
+            if (videoId) {
+                mainMedia.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
+            } else {
+                // Try direct embed if url seems embeddable
+                mainMedia.innerHTML = `<iframe width="100%" height="100%" src="${url}" frameborder="0" allowfullscreen></iframe>`;
+            }
+        } else {
+            mainMedia.innerHTML = `<img src="${url}" alt="Preview" />`;
+        }
+    };
+
+    // 2. Build Thumbnails list
+    const mediaItems = [];
+
+    // Add additional previews
+    // API returns 'previews' (or sometimes 'additional_previews'?)
+    const previews = mod.previews || mod.additional_previews;
+
+    if (previews && Array.isArray(previews)) {
+        previews.forEach(p => {
+            // p has .url, .youtubevideo id?, .previewid
+            // Steam API: youtubevideoid is set if video. url is set if image.
+
+            if (p.youtubevideoid) {
+                const videoUrl = `https://www.youtube.com/watch?v=${p.youtubevideoid}`;
+                const thumbUrl = `https://img.youtube.com/vi/${p.youtubevideoid}/mqdefault.jpg`;
+                mediaItems.push({ url: videoUrl, thumb: thumbUrl, isVideo: true });
+            } else if (p.url) {
+                mediaItems.push({ url: p.url, isVideo: false });
+            }
+        });
+    }
+
+    // 1. Set Initial Main Preview
+    if (mediaItems.length > 0) {
+        setMainMedia(mediaItems[0].url, mediaItems[0].isVideo);
+    } else {
+        setMainMedia(imgSrc, false); // Fallback to thumbnail if no gallery
+    }
+
+    // Render Thumbnails
+    if (thumbContainer) {
+        mediaItems.forEach((item, index) => {
+            const thumb = document.createElement("div");
+            thumb.className = "detail-thumbnail";
+            if (index === 0) thumb.classList.add("active");
+
+            const tImg = document.createElement("img");
+            tImg.src = item.thumb || item.url;
+            tImg.loading = "lazy";
+
+            // Play icon overlay for video
+            if (item.isVideo) {
+                const playIcon = document.createElement("div");
+                playIcon.className = "thumb-play-icon";
+                playIcon.textContent = "▶";
+                thumb.appendChild(playIcon);
+            }
+
+            thumb.appendChild(tImg);
+
+            thumb.onclick = () => {
+                // Remove active from all
+                document.querySelectorAll(".detail-thumbnail").forEach(t => t.classList.remove("active"));
+                thumb.classList.add("active");
+                setMainMedia(item.url, item.isVideo);
+            };
+
+            thumbContainer.appendChild(thumb);
+        });
+    }
+
+
 
     // Description
     document.getElementById("detail-description").innerHTML = mod.file_description
@@ -214,6 +340,14 @@ function renderModDetail(mod) {
 }
 
 export function closeModDetail() {
+    // Stop video playback by clearing the container
+    const mainMedia = document.getElementById("detail-media-main");
+    if (mainMedia) mainMedia.innerHTML = "";
+
+    // Clear thumbnails as well
+    const thumbContainer = document.getElementById("detail-thumbnails");
+    if (thumbContainer) thumbContainer.innerHTML = "";
+
     // Switch back to previous tab
     // We need to trigger the tab switch logic in main.js
     // Since we can't import main.js (circular), we might rely on window.switchTab if exposed

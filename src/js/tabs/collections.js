@@ -18,7 +18,8 @@ export async function searchCollections(reset = true) {
 
     const loadingEl = document.getElementById("collections-loading");
     if (reset) {
-        document.getElementById("collections-grid").innerHTML = "";
+        const list = document.getElementById("collections-list");
+        if (list) list.innerHTML = "";
         if (loadingEl) loadingEl.classList.remove("hidden");
     }
 
@@ -57,7 +58,7 @@ export async function searchCollections(reset = true) {
 }
 
 export function renderCollections() {
-    const list = document.getElementById("collections-grid");
+    const list = document.getElementById("collections-list");
     if (!list) return;
     list.innerHTML = "";
 
@@ -125,18 +126,29 @@ export async function openCollectionDetail(publishedFileId) {
     }
 
     // Switch Tab
-    document.querySelectorAll(".tab-content").forEach(s => s.classList.remove("active"));
-    document.getElementById("tab-collection-detail").classList.add("active");
+    // Switch Tab
+    document.querySelectorAll(".tab-content").forEach(s => {
+        s.classList.remove("active");
+        s.style.display = "none";
+    });
+    const detailTab = document.getElementById("tab-collection-detail");
+    detailTab.classList.add("active");
+    detailTab.style.display = "block";
+
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
 
     // Reset UI
     document.getElementById("coll-detail-loading").style.display = "flex";
     document.getElementById("coll-detail-content").style.display = "none";
-    document.getElementById("coll-detail-items").innerHTML = "";
+    // Reset UI
+    document.getElementById("coll-detail-loading").style.display = "flex";
+    document.getElementById("coll-detail-content").style.display = "none";
+    document.getElementById("coll-detail-items-list").innerHTML = "";
+    document.getElementById("content").scrollTop = 0;
     document.getElementById("content").scrollTop = 0;
 
     try {
-        const coll = await invokeWithRetry("get_collection_details_cmd", { publishedFileId: publishedFileId });
+        const coll = await invokeWithRetry("get_collection_details_cmd", { collectionId: publishedFileId });
         renderCollectionDetail(coll);
     } catch (e) {
         document.getElementById("coll-detail-loading").style.display = "none";
@@ -165,7 +177,7 @@ function renderCollectionDetail(coll) {
     document.getElementById("coll-detail-description").textContent = coll.file_description || "";
 
     // Render Items
-    const list = document.getElementById("coll-detail-items");
+    const list = document.getElementById("coll-detail-items-list");
     list.innerHTML = "";
 
     if (!coll.children || coll.children.length === 0) {

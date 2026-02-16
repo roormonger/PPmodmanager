@@ -9,16 +9,19 @@ export async function loadInstalledMods() {
     const empty = document.getElementById("installed-empty");
 
     if (list) list.innerHTML = "";
-    if (loading) loading.style.display = "flex";
+    if (loading) loading.classList.remove("hidden");
     if (empty) empty.style.display = "none";
     hideAlert("installed-alert");
+
+    // Force a small delay to make spinner visible and ensuring UI update
+    await new Promise(r => setTimeout(r, 50));
 
     try {
         const mods = await invoke("list_installed_mods");
 
         if (!mods || mods.length === 0) {
             state.installedModsCache = [];
-            if (loading) loading.style.display = "none";
+            if (loading) loading.classList.add("hidden");
             if (empty) empty.style.display = "block";
             return;
         }
@@ -27,45 +30,50 @@ export async function loadInstalledMods() {
 
         // Fetch details for each mod from Steam API to get titles/images
         const enriched = await enrichInstalledMods(mods);
-        if (loading) loading.style.display = "none";
+
+        if (loading) loading.classList.add("hidden");
         renderInstalledMods(enriched, 'mod');
     } catch (e) {
-        if (loading) loading.style.display = "none";
+        if (loading) loading.classList.add("hidden");
         showAlert("installed-alert", String(e));
     }
 }
 
 export async function loadContraptions() {
+    console.log("Loading contraptions...");
     const list = document.getElementById("contraptions-list");
     const loading = document.getElementById("contraptions-loading");
     const empty = document.getElementById("contraptions-empty");
 
     if (list) list.innerHTML = "";
-    if (loading) loading.style.display = "flex";
+    if (loading) loading.classList.remove("hidden");
     if (empty) empty.style.display = "none";
-    hideAlert("contraptions-alert"); // Assuming there's one, or we use a general one? 
-    // Actually contraptions tab might reuse alert structure or need its own ID.
+    hideAlert("contraptions-alert");
+
+    // Force a small delay
+    await new Promise(r => setTimeout(r, 50));
 
     try {
         const items = await invoke("list_installed_contraptions");
+        console.log("Contraptions loaded:", items ? items.length : 0);
 
         if (!items || items.length === 0) {
             state.contraptionsCache = [];
-            if (loading) loading.style.display = "none";
+            if (loading) loading.classList.add("hidden");
             if (empty) empty.style.display = "block";
             return;
         }
 
         state.contraptionsCache = items;
-        // Contraptions are local files, they might not have steam IDs easily mapable?
-        // Current backend returns basic info. We might skip enrich for now or implement later.
 
-        if (loading) loading.style.display = "none";
+        if (loading) loading.classList.add("hidden");
         renderInstalledMods(items, 'contraption');
     } catch (e) {
-        if (loading) loading.style.display = "none";
-        // If there is no specific alert box for contraptions, we might need to fallback or create one.
+        if (loading) loading.classList.add("hidden");
         console.error("Contraptions load error:", e);
+        showAlert("contraptions-alert", "Failed to load contraptions: " + e);
+        // Note: added contraptions-alert to HTML in previous turn? 
+        // Checked index.html in Step 4328, line 193: <div id="contraptions-alert" class="alert hidden"></div> exists.
     }
 }
 
@@ -74,7 +82,6 @@ async function enrichInstalledMods(mods) {
     for (const mod of mods) {
         let enriched = { ...mod };
 
-        // If we have a workshop/UGC ID, try to enrich with Steam API
         if (mod.ugc_id) {
             try {
                 const detail = await invoke("get_mod_details_cmd", { publishedFileId: mod.ugc_id });
@@ -101,7 +108,6 @@ export function renderInstalledMods(items, type = "mod") {
         const row = document.createElement("div");
         row.className = "installed-item";
 
-        // Thumbnail logic
         let thumbSrc = mod.thumbnail_data
             ? `data:image/jpeg;base64,${mod.thumbnail_data}`
             : "icon.png";
@@ -128,7 +134,6 @@ export function renderInstalledMods(items, type = "mod") {
             <button class="installed-delete-btn" onclick="event.stopPropagation(); deleteInstalledItem('${escapeJs(mod.folder_name)}', '${type}')">Delete</button>
         `;
 
-        // Open details if mod
         if (type === 'mod' && mod.ugc_id) {
             row.onclick = () => openModDetail(mod.ugc_id);
         } else {
@@ -151,6 +156,22 @@ export async function deleteInstalledItem(folderName, type = 'mod') {
         }
         createToast(folderName, "success", `${type} deleted`, `${folderName} removed.`, 3000);
     } catch (e) {
-        alert("Failed to delete: " + e); // Or createToast
+        alert("Failed to delete: " + e);
+    }
+}
+
+export async function openModFolder() {
+    try {
+        await invoke("open_mods_folder");
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+export async function openContraptionsFolder() {
+    try {
+        await invoke("open_mods_folder");
+    } catch (e) {
+        console.error(e);
     }
 }

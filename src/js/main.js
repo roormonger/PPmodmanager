@@ -2,11 +2,12 @@
 import { state, resetSearchState } from "./state.js";
 import { loadSettings, browseForFolder, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs } from "./tabs/settings.js";
 import { searchMods, openModDetail, closeModDetail, installMod } from "./tabs/browse.js";
-import { loadInstalledMods, loadContraptions, deleteInstalledItem } from "./tabs/installed.js";
+import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder } from "./tabs/installed.js";
 import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem } from "./tabs/collections.js";
 
 // ── Tab Switching ───────────────────────────────
 function switchTab(tabId) {
+    console.log(`[Main] Switching to tab: ${tabId}`);
     // Update nav buttons
     document.querySelectorAll(".nav-btn").forEach((btn) => {
         // Handle data-tab match
@@ -90,10 +91,13 @@ function exposeToWindow() {
 
     // Installed
     window.deleteInstalledItem = deleteInstalledItem;
+    window.openModFolder = openModFolder;
+    window.openContraptionsFolder = openContraptionsFolder;
     // loadInstalledMods / loadContraptions called by switchTab
 
     // Collections
     window.searchCollections = (reset) => searchCollections(reset);
+    window.closeModDetail = closeModDetail;
     window.openCollectionDetail = openCollectionDetail;
     window.closeCollectionDetail = closeCollectionDetail;
     // window.installCollectionItem = installCollectionItem; // If needed directly
