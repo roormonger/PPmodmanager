@@ -162,31 +162,88 @@ export async function deleteInstalledItem(folderName, type) {
 
 export function filterInstalledMods(query) {
     if (!state.installedModsList) return;
-    const q = query.toLowerCase();
-    const filtered = state.installedModsList.filter(mod => {
+    const q = (query || "").toLowerCase();
+
+    // Get Sort Settings
+    const sortType = document.getElementById("installed-sort-type").value;
+    const sortDir = state.settings.installedSortDir;
+
+    let filtered = state.installedModsList.filter(mod => {
         return (mod.name && mod.name.toLowerCase().includes(q)) ||
             (mod.title && mod.title.toLowerCase().includes(q)) ||
             (mod.steam_title && mod.steam_title.toLowerCase().includes(q)) ||
             (mod.folder_name && mod.folder_name.toLowerCase().includes(q));
     });
+
+    // Apply Sorting
+    applyLocalSort(filtered, sortType, sortDir);
+
     renderInstalledMods(filtered, 'mod');
 }
 
 export function filterContraptions(query) {
     if (!state.contraptionsList) return;
-    const q = query.toLowerCase();
-    const filtered = state.contraptionsList.filter(item => {
+    const q = (query || "").toLowerCase();
+
+    // Get Sort Settings
+    const sortType = document.getElementById("contraptions-sort-type").value;
+    const sortDir = state.settings.contraptionsSortDir;
+
+    let filtered = state.contraptionsList.filter(item => {
         return (item.name && item.name.toLowerCase().includes(q)) ||
             (item.title && item.title.toLowerCase().includes(q)) ||
             (item.steam_title && item.steam_title.toLowerCase().includes(q)) ||
             (item.folder_name && item.folder_name.toLowerCase().includes(q));
     });
+
+    // Apply Sorting
+    applyLocalSort(filtered, sortType, sortDir);
+
     renderInstalledMods(filtered, 'contraption');
+}
+
+function applyLocalSort(list, type, dir) {
+    list.sort((a, b) => {
+        let valA, valB;
+        if (type === "name") {
+            valA = (a.steam_title || a.name || a.folder_name).toLowerCase();
+            valB = (b.steam_title || b.name || b.folder_name).toLowerCase();
+            return dir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else if (type === "size") {
+            valA = a.folder_size || 0;
+            valB = b.folder_size || 0;
+        } else if (type === "date") {
+            valA = a.created_at || 0;
+            valB = b.created_at || 0;
+        }
+
+        if (dir === "asc") return valA - valB;
+        return valB - valA;
+    });
+}
+
+export function toggleLocalSortDir(type) {
+    const isMod = type === 'mod';
+    const key = isMod ? 'installedSortDir' : 'contraptionsSortDir';
+    const current = state.settings[key];
+    const next = current === 'asc' ? 'desc' : 'asc';
+    state.settings[key] = next;
+
+    // Update Button UI
+    const btn = document.getElementById(isMod ? 'installed-sort-dir-btn' : 'contraptions-sort-dir-btn');
+    if (btn) btn.textContent = next === 'asc' ? '▲' : '▼';
+
+    // Refresh list
+    if (isMod) {
+        filterInstalledMods(document.getElementById("installed-search-input").value);
+    } else {
+        filterContraptions(document.getElementById("contraptions-search-input").value);
+    }
 }
 
 export async function openModFolder(folderName) {
     try {
-        await invoke("open_mod_folder", { folderName });
+        await invoke("open_mod_folder", { folderName: folderName || "" });
     } catch (e) {
         createToast("Error opening folder", "error", "Error", String(e));
     }
@@ -194,8 +251,16 @@ export async function openModFolder(folderName) {
 
 export async function openContraptionsFolder(folderName) {
     try {
-        await invoke("open_contraptions_folder", { folderName });
+        await invoke("open_contraptions_folder", { folderName: folderName || "" });
     } catch (e) {
         createToast("Error opening folder", "error", "Error", String(e));
+    }
+}
+
+export async function openRootFolder(type) {
+    if (type === 'mod') {
+        return openModFolder("");
+    } else {
+        return openContraptionsFolder("");
     }
 }

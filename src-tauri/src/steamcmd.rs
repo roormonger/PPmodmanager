@@ -370,6 +370,7 @@ use serde::{Deserialize as SerdeDeserialize, Serialize};
 pub struct InstalledMod {
     pub folder_name: String,
     pub folder_size: u64,
+    pub created_at: u64,
     pub ugc_id: String,
     pub name: String,
     pub author: String,
@@ -511,9 +512,16 @@ fn scan_installed_items(dir: &Path) -> Result<Vec<InstalledMod>, String> {
          let author = json.as_ref().map(|j| j.author.clone()).unwrap_or_default();
          let description = json.as_ref().map(|j| j.description.clone()).unwrap_or_default();
          let thumbnail_data = find_thumbnail(&dir_path).unwrap_or_default();
+         
+         let created_at = dir_path.metadata()
+             .and_then(|m| m.created())
+             .map_err(|e| e) // Keep as io::Error
+             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).map_err(|_| io::Error::new(io::ErrorKind::Other, "Time error")))
+             .map(|d| d.as_secs())
+             .unwrap_or(0);
 
          items.push(InstalledMod {
-             folder_name, folder_size: size, ugc_id, name, author, description, thumbnail_data
+             folder_name, folder_size: size, created_at, ugc_id, name, author, description, thumbnail_data
          });
     }
     Ok(items)
@@ -552,20 +560,33 @@ pub async fn delete_installed_mod(
 pub fn open_mod_folder(folder_name: String) -> Result<(), String> {
     let cfg = crate::config::load_config();
     let config_path = Path::new(&cfg.people_playground_dir);
-    let game_root = if config_path.ends_with("Mods") || config_path.ends_with("mods") {
+    
+    // Normalize game root
+    let game_root = if config_path.to_string_lossy().to_lowercase().ends_with("mods") {
+        config_path.parent().unwrap_or(config_path)
+    } else if config_path.to_string_lossy().to_lowercase().ends_with("contraptions") {
         config_path.parent().unwrap_or(config_path)
     } else {
         config_path
     };
 
-    let path = game_root.join("Mods").join(&folder_name);
-    
+    let path = if folder_name.is_empty() {
+        game_root.join("Mods")
+    } else {
+        game_root.join("Mods").join(&folder_name)
+    };
+
     if !path.exists() {
         return Err(format!("Folder not found: {:?}", path));
     }
 
     #[cfg(target_os = "windows")]
-    Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
+    {
+        Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
     
     Ok(())
 }
@@ -574,20 +595,33 @@ pub fn open_mod_folder(folder_name: String) -> Result<(), String> {
 pub fn open_contraptions_folder(folder_name: String) -> Result<(), String> {
     let cfg = crate::config::load_config();
     let config_path = Path::new(&cfg.people_playground_dir);
-    let game_root = if config_path.ends_with("Mods") || config_path.ends_with("mods") {
+    
+    // Normalize game root
+    let game_root = if config_path.to_string_lossy().to_lowercase().ends_with("mods") {
+        config_path.parent().unwrap_or(config_path)
+    } else if config_path.to_string_lossy().to_lowercase().ends_with("contraptions") {
         config_path.parent().unwrap_or(config_path)
     } else {
         config_path
     };
 
-    let path = game_root.join("Contraptions").join(&folder_name);
-    
+    let path = if folder_name.is_empty() {
+        game_root.join("Contraptions")
+    } else {
+        game_root.join("Contraptions").join(&folder_name)
+    };
+
     if !path.exists() {
         return Err(format!("Folder not found: {:?}", path));
     }
 
     #[cfg(target_os = "windows")]
-    Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
+    {
+        Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
     
     Ok(())
 }

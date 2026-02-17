@@ -2,7 +2,7 @@
 import { state, resetSearchState } from "./state.js";
 import { loadSettings, browseForFolder, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs, toggleApiKeyVisibility } from "./tabs/settings.js";
 import { searchMods, openModDetail, closeModDetail, installMod } from "./tabs/browse.js";
-import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder, filterInstalledMods, filterContraptions } from "./tabs/installed.js";
+import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder, filterInstalledMods, filterContraptions, toggleLocalSortDir, openRootFolder } from "./tabs/installed.js";
 import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem } from "./tabs/collections.js";
 
 // ── Tab Switching ───────────────────────────────
@@ -97,6 +97,8 @@ function exposeToWindow() {
     window.loadContraptions = loadContraptions;
     window.filterInstalledMods = filterInstalledMods;
     window.filterContraptions = filterContraptions;
+    window.toggleLocalSortDir = toggleLocalSortDir;
+    window.openRootFolder = openRootFolder;
 
     // Collections
     window.searchCollections = (reset) => searchCollections(reset);

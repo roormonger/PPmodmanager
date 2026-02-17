@@ -16,7 +16,9 @@ export const state = {
         sortType: 3, // Trending
         sortDays: 7, // Week
         collSortType: 3, // Trending
-        zoomLevel: 250
+        zoomLevel: 250,
+        installedSortDir: "desc", // Default to newest first
+        contraptionsSortDir: "desc"
     }
 };
 

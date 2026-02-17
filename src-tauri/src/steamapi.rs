@@ -556,7 +556,7 @@ pub async fn search_collections(
             .map_err(|e| format!("Failed to parse response: {}", e))?;
         
         // Filter this page
-        let mut page_items = wrapper.response.publishedfiledetails;
+        let page_items = wrapper.response.publishedfiledetails;
         
         // Filter: Ensure we only show items that are likely collections
         // page_items.retain(|item| item.filetype == 1); // Redundant if we asked for 1

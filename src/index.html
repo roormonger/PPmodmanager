@@ -179,6 +179,26 @@
                     </div>
                 </div>
 
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>Sort by</label>
+                        <select id="installed-sort-type"
+                            onchange="filterInstalledMods(document.getElementById('installed-search-input').value)">
+                            <option value="name">Name</option>
+                            <option value="size">Size</option>
+                            <option value="date" selected>Date Added</option>
+                        </select>
+                        <button id="installed-sort-dir-btn" class="icon-btn" onclick="toggleLocalSortDir('mod')"
+                            title="Toggle Sort Direction">
+                            ▼
+                        </button>
+                    </div>
+                    <div class="filter-actions">
+                        <button class="collection-install-btn" onclick="openRootFolder('mod')">Open Folder</button>
+                        <button class="collection-install-btn" onclick="loadInstalledMods()">Refresh</button>
+                    </div>
+                </div>
+
                 <div id="installed-alert" class="alert hidden"></div>
                 <div id="installed-loading" class="loading-state hidden">
                     <div class="spinner"></div>
@@ -206,6 +226,27 @@
                             oninput="filterContraptions(this.value)" />
                         <button id="contraptions-search-btn" class="search-btn"
                             onclick="loadContraptions()">Search</button>
+                    </div>
+                </div>
+
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>Sort by</label>
+                        <select id="contraptions-sort-type"
+                            onchange="filterContraptions(document.getElementById('contraptions-search-input').value)">
+                            <option value="name">Name</option>
+                            <option value="size">Size</option>
+                            <option value="date" selected>Date Added</option>
+                        </select>
+                        <button id="contraptions-sort-dir-btn" class="icon-btn"
+                            onclick="toggleLocalSortDir('contraption')" title="Toggle Sort Direction">
+                            ▼
+                        </button>
+                    </div>
+                    <div class="filter-actions">
+                        <button class="collection-install-btn" onclick="openRootFolder('contraption')">Open
+                            Folder</button>
+                        <button class="collection-install-btn" onclick="loadContraptions()">Refresh</button>
                     </div>
                 </div>
 

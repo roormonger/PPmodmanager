@@ -247,8 +247,15 @@ body {
 .filter-bar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 20px;
     margin-bottom: 16px;
+}
+
+.filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .filter-group {
