@@ -100,6 +100,7 @@ export function renderMods() {
     browseMods.forEach((mod) => {
         const card = document.createElement("div");
         card.className = "mod-card";
+        card.dataset.id = mod.publishedfileid;
         const date = mod.time_updated
             ? new Date(mod.time_updated * 1000).toLocaleDateString()
             : "";
@@ -371,54 +372,52 @@ export function closeModDetail() {
 export async function installMod(publishedFileId, title, btnElement) {
     if (btnElement) {
         btnElement.disabled = true;
-        btnElement.textContent = "Installing...";
+        btnElement.textContent = "Queued";
     }
 
-    createToast(`install-${publishedFileId}`, "downloading", "Downloading...", `Installing ${title}`, 0);
-
     try {
-        await invokeWithRetry("install_mod_cmd", { publishedFileId: publishedFileId });
+        await invokeWithRetry("install_mod", {
+            workshopId: publishedFileId,
+            title: title
+        });
 
-        // Success
-        const toast = document.getElementById(`toast-install-${publishedFileId}`);
-        if (toast) {
-            toast.className = "toast success";
-            toast.querySelector(".toast-title").textContent = "Installed";
-            toast.querySelector(".toast-msg").textContent = `${title} is ready.`;
-            toast.querySelector(".toast-icon").textContent = "✓";
-            setTimeout(() => {
-                if (toast.parentElement) toast.remove();
-            }, 3000);
-        } else {
-            createToast(publishedFileId, "success", "Installed", `${title} is ready.`);
-        }
+        // Success enqueueing (not necessarily finished downloading)
+        addLog(`[Queue] Enqueued mod: ${title} (${publishedFileId})`, "info");
 
-        if (btnElement) {
-            btnElement.textContent = "Installed";
-            btnElement.classList.add("installed");
-            btnElement.onclick = null;
-        }
-
-        // Refresh installed list silently
-        // We can dispatch an event or rely on state refresh next time tab opens
-        // For immediate update if we are on browse, we might want to update cache
-        // But loadInstalledMods() will handle it.
+        // The UI in the sidebar will take over from here.
+        // We don't need to wait or do anything else on this button 
+        // until the next refresh of the installed list.
 
     } catch (e) {
         if (btnElement) {
             btnElement.disabled = false;
             btnElement.textContent = "Install";
         }
-        const toast = document.getElementById(`toast-install-${publishedFileId}`);
-        if (toast) {
-            toast.className = "toast error";
-            toast.querySelector(".toast-title").textContent = "Installation Failed";
-            toast.querySelector(".toast-msg").textContent = String(e);
-            setTimeout(() => {
-                if (toast.parentElement) toast.remove();
-            }, 5000);
-        } else {
-            createToast("error", "error", "Installation Failed", String(e));
-        }
+        createToast("error", "error", "Queue Error", String(e));
     }
 }
+// ── Real-time Updates ───────────────────────────
+window.addEventListener('item-installed', (event) => {
+    const { id, type } = event.detail;
+    console.log(`[Browse] Notified of installation: ${id} (${type})`);
+
+    // Find the card in the grid and remove it
+    const grid = document.getElementById("mods-grid");
+    if (!grid) return;
+
+    const cards = grid.querySelectorAll(".mod-card");
+    for (const card of cards) {
+        // We can find the ID by looking at the onclick or storing it in a data-attribute.
+        // Let's check card.innerHTML or just use a data attribute (which we should add in renderMods).
+        if (card.dataset.id === id) {
+            console.log(`[Browse] Removing installed card: ${id}`);
+            card.remove();
+
+            // If grid is now empty, show empty message
+            if (grid.children.length === 0) {
+                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">No mods found matching criteria.</div>`;
+            }
+            break;
+        }
+    }
+});

@@ -264,3 +264,19 @@ export async function openRootFolder(type) {
         return openContraptionsFolder("");
     }
 }
+
+// ── Real-time Updates ───────────────────────────
+window.addEventListener('item-installed', (event) => {
+    const { type } = event.detail;
+    console.log(`[Installed] Notified of installation: ${type}`);
+
+    // If the tab is active, refresh the list
+    const activeTab = document.querySelector(".tab-content.active");
+    if (activeTab) {
+        if (type === 'mod' && activeTab.id === 'tab-installed') {
+            loadInstalledMods();
+        } else if (type === 'contraption' && activeTab.id === 'tab-contraptions') {
+            loadContraptions();
+        }
+    }
+});

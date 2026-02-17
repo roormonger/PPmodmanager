@@ -8,6 +8,7 @@ export const state = {
     contraptionsCache: [],
     contraptionsList: [], // Enriched list for filtering
     currentCollections: [],
+    currentCollectionItems: [], // Items in the currently viewed collection
 
     // Settings state (could be loaded from backend, but kept here for runtime cache)
     settings: {

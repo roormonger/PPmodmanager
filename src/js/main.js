@@ -3,7 +3,8 @@ import { state, resetSearchState } from "./state.js";
 import { loadSettings, browseForFolder, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs, toggleApiKeyVisibility } from "./tabs/settings.js";
 import { searchMods, openModDetail, closeModDetail, installMod } from "./tabs/browse.js";
 import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder, filterInstalledMods, filterContraptions, toggleLocalSortDir, openRootFolder } from "./tabs/installed.js";
-import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem } from "./tabs/collections.js";
+import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem, installAllCollectionMods } from "./tabs/collections.js";
+import { initDownloadQueue } from "./queue.js";
 
 // ── Tab Switching ───────────────────────────────
 function switchTab(tabId) {
@@ -55,6 +56,16 @@ async function init() {
 
     // Initial Load
     await loadSettings(); // Populates state.settings
+
+    // Init Download Queue UI
+    initDownloadQueue();
+
+    // Load installation caches early so Browse awareness works on first load
+    await Promise.all([
+        loadInstalledMods(),
+        loadContraptions()
+    ]);
+
     // Find active tab from HTML if any, default to browse
     switchTab("browse");
 
@@ -105,7 +116,8 @@ function exposeToWindow() {
     window.closeModDetail = closeModDetail;
     window.openCollectionDetail = openCollectionDetail;
     window.closeCollectionDetail = closeCollectionDetail;
-    // window.installCollectionItem = installCollectionItem; // If needed directly
+    window.installCollectionItem = installCollectionItem;
+    window.installAllCollectionMods = installAllCollectionMods;
 
     // Settings
     window.saveSettings = saveSettings;

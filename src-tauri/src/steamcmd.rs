@@ -2,9 +2,211 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
+use once_cell::sync::Lazy;
+use serde::{Serialize, Deserialize as SerdeDeserialize, Deserialize};
+use tauri::{AppHandle, Emitter};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+
+// --- Download Queue Structures ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadTask {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub progress: f32,
+    pub message: String,
+    pub content_type: String, // "mod" or "contraption"
+}
+
+pub struct DownloadManager {
+    queue: Arc<Mutex<VecDeque<DownloadTask>>>,
+    active: Arc<Mutex<Option<DownloadTask>>>,
+    app_handle: Arc<Mutex<Option<AppHandle>>>,
+}
+
+static MANAGER: Lazy<DownloadManager> = Lazy::new(|| {
+    DownloadManager::new()
+});
+
+const EVENT_QUEUE_UPDATE: &str = "download-queue-update";
+
+impl DownloadManager {
+    fn new() -> Self {
+        Self {
+            queue: Arc::new(Mutex::new(VecDeque::new())),
+            active: Arc::new(Mutex::new(None)),
+            app_handle: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn init(&self, handle: AppHandle) {
+        let mut h = self.app_handle.lock().unwrap();
+        if h.is_some() { return; }
+        *h = Some(handle.clone());
+
+        let queue_clone = self.queue.clone();
+        let active_clone = self.active.clone();
+        let handle_inner = handle.clone();
+
+        // Worker Thread
+        std::thread::spawn(move || {
+            loop {
+                let next_task = {
+                    let mut q = queue_clone.lock().unwrap();
+                    q.pop_front()
+                };
+
+                if let Some(mut task) = next_task {
+                    // Start processing
+                    {
+                        let mut act = active_clone.lock().unwrap();
+                        task.status = "downloading".to_string();
+                        task.progress = 0.1;
+                        *act = Some(task.clone());
+                    }
+                    emit_update_static(&handle_inner, &queue_clone, &active_clone);
+
+                    // Execute
+                    let result = perform_install(&task.id);
+                    
+                    // Update state with result
+                    {
+                        let mut act = active_clone.lock().unwrap();
+                        match result {
+                            Ok(ctype) => {
+                                task.status = "completed".to_string();
+                                task.progress = 1.0;
+                                task.message = "Installed successfully".to_string();
+                                task.content_type = ctype;
+                            }
+                            Err(e) => {
+                                task.status = "failed".to_string();
+                                task.message = e;
+                            }
+                        }
+                        *act = Some(task.clone());
+                    }
+                    emit_update_static(&handle_inner, &queue_clone, &active_clone);
+                    
+                    // Cool down/visibility delay
+                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                    
+                    {
+                        let mut act = active_clone.lock().unwrap();
+                        *act = None;
+                    }
+                    emit_update_static(&handle_inner, &queue_clone, &active_clone);
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                }
+            }
+        });
+    }
+
+    pub fn enqueue(&self, id: String, title: String) {
+        {
+            let mut q = self.queue.lock().unwrap();
+            q.push_back(DownloadTask {
+                id,
+                title,
+                status: "pending".to_string(),
+                progress: 0.0,
+                message: "Queued".to_string(),
+                content_type: "".to_string(),
+            });
+        }
+        
+        if let Some(h) = self.app_handle.lock().unwrap().as_ref() {
+            emit_update_static(h, &self.queue, &self.active);
+        }
+    }
+
+    pub fn get_state(&self) -> (Vec<DownloadTask>, Option<DownloadTask>) {
+        let q = self.queue.lock().unwrap();
+        let act = self.active.lock().unwrap();
+        (q.clone().into_iter().collect(), act.clone())
+    }
+}
+
+fn emit_update_static(handle: &AppHandle, queue: &Arc<Mutex<VecDeque<DownloadTask>>>, active: &Arc<Mutex<Option<DownloadTask>>>) {
+    let q = queue.lock().unwrap();
+    let act = active.lock().unwrap();
+    let payload = serde_json::json!({
+        "pending": q.clone().into_iter().collect::<Vec<_>>(),
+        "active": *act
+    });
+    let _ = handle.emit(EVENT_QUEUE_UPDATE, payload);
+}
+
+#[tauri::command]
+pub fn install_mod(handle: AppHandle, workshop_id: String, title: String) -> Result<(), String> {
+    MANAGER.init(handle);
+    MANAGER.enqueue(workshop_id, title);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_download_state() -> serde_json::Value {
+    let (pending, active) = MANAGER.get_state();
+    serde_json::json!({
+        "pending": pending,
+        "active": active
+    })
+}
+
+fn perform_install(workshop_id: &str) -> Result<String, String> {
+    let app_id = "1118200";
+    let download_path_str = download_workshop_item(app_id, workshop_id)?;
+    let download_path = Path::new(&download_path_str);
+    process_downloaded_items(workshop_id, download_path)
+}
+
+fn process_downloaded_items(workshop_id: &str, download_path: &Path) -> Result<String, String> {
+    let workshop_id_for_move = workshop_id.to_string();
+    let cfg = crate::config::load_config();
+    let game_root = PathBuf::from(&cfg.people_playground_dir);
+
+    if !game_root.exists() {
+        return Err("People Playground folder not found. Check settings.".to_string());
+    }
+
+    if let Some(mod_json_path) = find_mod_json_recursive(download_path) {
+        let src_root = mod_json_path.parent().unwrap_or(download_path);
+        let dest = game_root.join("Mods").join(&workshop_id_for_move);
+
+        match copy_dir_verified(src_root, &dest) {
+            Ok(_) => {
+                let _ = fs::remove_dir_all(&download_path);
+                Ok("mod".to_string())
+            }
+            Err(e) => {
+                let _ = fs::remove_dir_all(&dest);
+                Err(format!("Mod installation failed: {}", e))
+            }
+        }
+    } else if let Some(jaap_path) = find_jaap_recursive(download_path) {
+        let src_root = jaap_path.parent().unwrap_or(download_path);
+        let dest = game_root.join("Contraptions").join(&workshop_id_for_move);
+
+        match copy_dir_verified(src_root, &dest) {
+            Ok(_) => {
+                let _ = fs::remove_dir_all(&download_path);
+                Ok("contraption".to_string())
+            }
+            Err(e) => {
+                let _ = fs::remove_dir_all(&dest);
+                Err(format!("Contraption installation failed: {}", e))
+            }
+        }
+    } else {
+        Err("Error: Unrecognized content. Missing 'mod.json' or '.jaap' file.".to_string())
+    }
+}
 
 /// Get the steamcmd install directory (%APPDATA%\PPModManager\steamcmd)
 fn steamcmd_dir() -> PathBuf {
@@ -125,120 +327,7 @@ pub fn download_workshop_item(app_id: &str, workshop_id: &str) -> Result<String,
     }
 }
 
-/// Install a mod: download via SteamCMD and move to mods folder
-#[tauri::command]
-pub async fn install_mod(
-    state: tauri::State<'_, crate::config::ConfigState>,
-    workshop_id: String,
-) -> Result<String, String> {
-    let config = state.0.lock().unwrap().clone();
-
-    if config.people_playground_dir.is_empty() {
-        return Err("Mods folder not set. Go to Settings to configure it.".to_string());
-    }
-
-    let workshop_id_for_move = workshop_id.clone();
-    let app_id = "1118200"; // People Playground
-    // ── Logic ─────────────────────────────────────────
-
-    let download_path = tokio::task::spawn_blocking(move || {
-        // Try first attempt
-        match download_workshop_item(app_id, &workshop_id) {
-            Ok(path) => Ok(path),
-            Err(e) => {
-                println!(
-                    "First download attempt failed: {}. Cleaning cache and retrying...",
-                    e
-                );
-                // Clean cache and target
-                let dir = steamcmd_dir();
-                // 1. cleanup downloads staging
-                let staging = dir
-                    .join("steamapps")
-                    .join("workshop")
-                    .join("downloads")
-                    .join(app_id);
-                if staging.exists() {
-                    let _ = fs::remove_dir_all(&staging);
-                }
-                // 2. cleanup content target
-                let content = dir
-                    .join("steamapps")
-                    .join("workshop")
-                    .join("content")
-                    .join(app_id)
-                    .join(&workshop_id);
-                if content.exists() {
-                    let _ = fs::remove_dir_all(&content);
-                }
-                // 3. cleanup ACF file (force re-index)
-                let acf = dir
-                    .join("steamapps")
-                    .join("workshop")
-                    .join(format!("appworkshop_{}.acf", app_id));
-                if acf.exists() {
-                    let _ = fs::remove_file(&acf);
-                }
-
-                // Retry
-                download_workshop_item(app_id, &workshop_id)
-            }
-        }
-    })
-    .await
-    .map_err(|e| format!("Task error: {}", e))??;
-
-    // 1. Determine Game Root (Handle legacy "Mods" path)
-    let config_path = Path::new(&config.people_playground_dir);
-    let game_root = if config_path.ends_with("Mods") || config_path.ends_with("mods") {
-        config_path.parent().unwrap_or(config_path)
-    } else {
-        config_path
-    };
-
-    // 2. Classify Content (Mod vs Contraption)
-    let download_dir = Path::new(&download_path);
-    
-    // Check for Mod (mod.json)
-    if let Some(mod_json_path) = find_mod_json_recursive(download_dir) {
-        // It's a MOD
-        let src_root = mod_json_path.parent().unwrap_or(download_dir);
-        let dest = game_root.join("Mods").join(&workshop_id_for_move);
-
-        match copy_dir_verified(src_root, &dest) {
-            Ok(_) => {
-                let _ = fs::remove_dir_all(&download_path);
-                Ok(format!("Mod {} installed successfully!", workshop_id_for_move))
-            }
-            Err(e) => {
-                let _ = fs::remove_dir_all(&dest);
-                Err(format!("Mod installation failed: {}", e))
-            }
-        }
-    } else if let Some(jaap_path) = find_jaap_recursive(download_dir) {
-        // It's a CONTRAPTION
-        let src_root = jaap_path.parent().unwrap_or(download_dir);
-        
-        // Get Name from .json (sibling to .jaap usually) or fallback to ID
-        let name = get_contraption_name(src_root).unwrap_or_else(|| workshop_id_for_move.clone());
-        let safe_name = sanitize_filename(&name);
-        
-        let dest = game_root.join("Contraptions").join(&safe_name);
-
-        match copy_dir_verified(src_root, &dest) {
-            Ok(_) => {
-                let _ = fs::remove_dir_all(&download_path);
-                Ok(format!("Contraption '{}' installed successfully!", name))
-            }
-            Err(e) => {
-                let _ = fs::remove_dir_all(&dest);
-                Err(format!("Contraption installation failed: {}", e))
-            }
-        }
-    } else {
-        Err("Error: Unrecognized content. Missing 'mod.json' or '.jaap' file.".to_string())
-    }
-}
+// --- Logic moved to MANAGER ---
 
 // ── Validation Helpers ──────────────────────────
 
@@ -364,7 +453,7 @@ fn copy_dir_verified(src: &Path, dest: &Path) -> Result<(), String> {
 
 // ── Installed Items ─────────────────────────────
 
-use serde::{Deserialize as SerdeDeserialize, Serialize};
+
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InstalledMod {

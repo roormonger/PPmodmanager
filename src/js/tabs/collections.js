@@ -1,8 +1,8 @@
 // Collections Tab Logic
 import { invokeWithRetry, formatBytes, escapeHtml, escapeJs, createToast, showAlert, hideAlert, addLog } from "../utils.js";
 import { state } from "../state.js";
-import { installMod } from "./browse.js"; // Reuse mod installation logic if needed, but collections have own logic?
-// Actually collections install items which are mods.
+import { installMod, openModDetail } from "./browse.js";
+import { loadInstalledMods, loadContraptions } from "./installed.js";
 
 // ── Search Collections ──────────────────────────
 export async function searchCollections(reset = true) {
@@ -145,7 +145,10 @@ export async function openCollectionDetail(publishedFileId) {
     document.getElementById("coll-detail-content").style.display = "none";
     document.getElementById("coll-detail-items-list").innerHTML = "";
     document.getElementById("content").scrollTop = 0;
-    document.getElementById("content").scrollTop = 0;
+
+    // Pre-fetch caches if empty
+    if (state.installedModsCache.length === 0) loadInstalledMods();
+    if (state.contraptionsCache.length === 0) loadContraptions();
 
     try {
         const coll = await invokeWithRetry("get_collection_details_cmd", { collectionId: publishedFileId });
@@ -186,7 +189,9 @@ function renderCollectionDetail(coll) {
     // Backend returns 'items' (enriched ModDetail list)
     // 'collection' (flattened) might have 'children' (raw list of IDs)
     // We want 'items'.
-    const items = coll.items || coll.children;
+    // Save for Install All
+    state.currentCollectionItems = coll.items || coll.children || [];
+    const items = state.currentCollectionItems;
 
     if (!items || items.length === 0) {
         list.innerHTML = `<div style="padding: 20px; color: var(--text-muted);">No items in this collection.</div>`;
@@ -203,6 +208,7 @@ function renderCollectionDetail(coll) {
 
         const row = document.createElement("div");
         row.className = "installed-item"; // Reuse styling
+        row.dataset.id = child.publishedfileid;
         row.style.cursor = "pointer"; // Indicate clickable
 
         // Navigate to mod detail on click (excluding install button)
@@ -214,7 +220,10 @@ function renderCollectionDetail(coll) {
 
         let thumb = child.preview_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23222'%3E%3Crect width='64' height='64' /%3E%3C/svg%3E";
 
-        const isInstalled = state.installedModsCache.some(m => m.ugc_id === child.publishedfileid);
+        // Check if installed in either cache
+        const isModInstalled = state.installedModsCache.some(m => m.ugc_id === child.publishedfileid);
+        const isContraptionInstalled = state.contraptionsCache.some(c => c.ugc_id === child.publishedfileid);
+        const isInstalled = isModInstalled || isContraptionInstalled;
 
         // Determine type from tags: 'Contraptions' tag means Contraption, else Mod
         let typeLabel = "Mod";
@@ -260,23 +269,69 @@ export function closeCollectionDetail() {
 export async function installCollectionItem(id, title, btn) {
     if (btn.classList.contains("installed")) return;
 
-    // logic similar to installMod but specifically for collection item button style
-    // We can actually just call installMod from browse.js if we import it? 
-    // Yes, let's reuse installMod logic but adapted for this button.
-
-    // Creating a wrapper or just duplicating logic for safety/simplicity
-    btn.textContent = "Installing...";
+    btn.textContent = "Queued";
     btn.disabled = true;
 
     try {
-        await invokeWithRetry("install_mod_cmd", { publishedFileId: id });
-        btn.textContent = "Installed";
-        btn.classList.add("installed");
-        btn.onclick = null;
-        createToast(id, "success", "Installed", `${title} ready.`);
+        await invokeWithRetry("install_mod", {
+            workshopId: id,
+            title: title
+        });
+
+        // Successfully enqueued
+        addLog(`[Queue] Enqueued collection item: ${title} (${id})`, "info");
+
     } catch (e) {
         btn.textContent = "Install";
         btn.disabled = false;
-        createToast("err-" + id, "error", "Failed", String(e));
+        createToast("err-" + id, "error", "Queue Error", String(e));
     }
 }
+
+export async function installAllCollectionMods() {
+    const list = document.getElementById("coll-detail-items-list");
+    if (!list) return;
+
+    const buttons = Array.from(list.querySelectorAll("button.btn-primary.small"));
+    if (buttons.length === 0) {
+        addLog("[Collections] No mods found to install in this collection.", "info");
+        return;
+    }
+
+    addLog(`[Collections] Starting batch installation for ${buttons.length} items.`, "info");
+
+    for (const btn of buttons) {
+        if (!btn.disabled && btn.textContent === "Install") {
+            // Trigger the click which calls installCollectionItem
+            btn.click();
+            // Small delay to prevent blocking the UI thread completely during DOM updates
+            await new Promise(r => setTimeout(r, 50));
+        }
+    }
+}
+
+// ── Real-time Updates ───────────────────────────
+window.addEventListener('item-installed', (event) => {
+    const { id, title } = event.detail;
+    console.log(`[Collections] Notified of installation: ${id}`);
+
+    // Find the item in the collection list if it's currently open
+    const detailList = document.getElementById("coll-detail-items-list");
+    if (!detailList) return;
+
+    // Use data-id to find the correct row
+    const items = detailList.querySelectorAll(".installed-item");
+    for (const item of items) {
+        if (item.dataset.id === id) {
+            const btn = item.querySelector("button");
+            if (btn) {
+                btn.textContent = "Installed";
+                btn.className = "btn-outline installed";
+                btn.disabled = true;
+                btn.onclick = null;
+            }
+            break;
+        }
+    }
+});
+
