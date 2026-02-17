@@ -216,6 +216,16 @@ function renderCollectionDetail(coll) {
 
         const isInstalled = state.installedModsCache.some(m => m.ugc_id === child.publishedfileid);
 
+        // Determine type from tags: 'Contraptions' tag means Contraption, else Mod
+        let typeLabel = "Mod";
+        if (child.tags && Array.isArray(child.tags)) {
+            const isContraption = child.tags.some(t => {
+                const tagVal = (t.tag || t.display_name || "").toLowerCase();
+                return tagVal === 'contraptions';
+            });
+            if (isContraption) typeLabel = "Contraption";
+        }
+
         row.innerHTML = `
             <img class="installed-item-img" src="${thumb}" alt="${escapeHtml(child.title)}" loading="lazy" />
             <div class="installed-item-info">
@@ -223,11 +233,12 @@ function renderCollectionDetail(coll) {
                 <div class="installed-item-meta">
                     ${child.creator_name ? `<span>by ${escapeHtml(child.creator_name)}</span>` : ""}
                 </div>
+                <div class="installed-item-meta" style="opacity: 0.7;">${typeLabel}</div>
             </div>
             <div class="installed-item-actions">
                 ${isInstalled
                 ? `<button class="btn-outline installed" disabled>Installed</button>`
-                : `<button class="btn-primary small" onclick="installCollectionItem('${child.publishedfileid}')">Install</button>`
+                : `<button class="btn-primary small" onclick="installCollectionItem('${child.publishedfileid}', '${escapeJs(child.title)}', this)">Install</button>`
             }
             </div>
         `;
