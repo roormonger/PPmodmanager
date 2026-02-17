@@ -15,6 +15,7 @@ export const state = {
         gamePath: "",
         apiKey: "",
         steamcmdPath: "",
+        version: "",
         sortType: 3, // Trending
         sortDays: 7, // Week
         collSortType: 3, // Trending

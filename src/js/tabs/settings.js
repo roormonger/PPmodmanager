@@ -5,6 +5,16 @@ import { state } from "../state.js";
 // Load settings from backend and populate UI
 export async function loadSettings() {
     try {
+        // Fetch Version
+        const version = await invoke("get_app_version");
+        state.settings.version = version;
+
+        const sidebarVersion = document.getElementById("app-version");
+        if (sidebarVersion) sidebarVersion.textContent = `v${version}`;
+
+        const settingsVersion = document.getElementById("update-status");
+        if (settingsVersion) settingsVersion.textContent = `v${version}`;
+
         const settings = await invoke("get_config");
         if (settings) {
             // Update local state with mapped keys
@@ -162,7 +172,7 @@ export async function checkUpdates() {
             }
             createToast("update-avail", "success", "Update Available", `Version ${update.version} is ready.`);
         } else {
-            if (status) status.textContent = "Up to date (v0.5.5)";
+            if (status) status.textContent = `Up to date (v${state.settings.version || "0.6.0"})`;
             if (btn) {
                 btn.textContent = "Check for Updates";
                 btn.disabled = false;
@@ -170,7 +180,7 @@ export async function checkUpdates() {
             createToast("no-update", "info", "Up to date", "You are on the latest version.", 2000);
         }
     } catch (e) {
-        if (status) status.textContent = "Check failed";
+        if (status) status.textContent = `v${state.settings.version || "0.6.0"} (Check failed)`;
         if (btn) {
             btn.textContent = "Check for Updates";
             btn.disabled = false;
