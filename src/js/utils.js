@@ -150,3 +150,13 @@ export function addLog(message, type = "info") {
     entry.textContent = `[${time}] ${message}`;
     container.prepend(entry);
 }
+
+// Open external URL in system browser
+export function openUrl(url) {
+    if (!url) return;
+    invoke("open_browser_url", { url })
+        .catch(err => {
+            console.error("open_browser_url failed:", err);
+            window.open(url, "_blank");
+        });
+}

@@ -1,6 +1,6 @@
 // Main Entry Point
 import { state, resetSearchState } from "./state.js";
-import { loadSettings, browseForFolder, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs, toggleApiKeyVisibility } from "./tabs/settings.js";
+import { loadSettings, browseForFolder, browseForSteamCMD, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs, toggleApiKeyVisibility } from "./tabs/settings.js";
 import { searchMods, openModDetail, closeModDetail, installMod } from "./tabs/browse.js";
 import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder, filterInstalledMods, filterContraptions, toggleLocalSortDir, openRootFolder } from "./tabs/installed.js";
 import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem, installAllCollectionMods } from "./tabs/collections.js";
@@ -113,7 +113,6 @@ function exposeToWindow() {
 
     // Collections
     window.searchCollections = (reset) => searchCollections(reset);
-    window.closeModDetail = closeModDetail;
     window.openCollectionDetail = openCollectionDetail;
     window.closeCollectionDetail = closeCollectionDetail;
     window.installCollectionItem = installCollectionItem;
@@ -122,6 +121,7 @@ function exposeToWindow() {
     // Settings
     window.saveSettings = saveSettings;
     window.browseForFolder = browseForFolder;
+    window.browseForSteamCMD = browseForSteamCMD;
     window.checkUpdates = checkUpdates;
     window.installUpdate = installUpdate;
     window.toggleLogs = toggleLogs;

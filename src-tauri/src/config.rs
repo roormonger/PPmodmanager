@@ -18,7 +18,7 @@ impl Default for Config {
         Self {
             steam_api_key: String::new(),
             people_playground_dir: String::new(),
-            steamcmd_dir: "steamcmd".to_string(),
+            steamcmd_dir: String::new(),
         }
     }
 }
@@ -64,10 +64,15 @@ pub fn save_config_cmd(
     state: tauri::State<'_, ConfigState>,
     steam_api_key: String,
     people_playground_dir: String,
+    steamcmd_dir: String,
 ) -> Result<String, String> {
+    println!("[Config] Saving: APIKey={}, GameDir={}, SteamCMDDir={}", 
+             if steam_api_key.is_empty() { "empty" } else { "set" }, 
+             people_playground_dir, steamcmd_dir);
     let mut config = state.0.lock().unwrap();
     config.steam_api_key = steam_api_key;
     config.people_playground_dir = people_playground_dir;
+    config.steamcmd_dir = steamcmd_dir;
     save_config(&config)?;
     Ok("Settings saved successfully!".to_string())
 }

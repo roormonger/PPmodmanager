@@ -1,5 +1,5 @@
 // Browse Tab Logic
-import { invokeWithRetry, formatBytes, escapeHtml, escapeJs, showAlert, hideAlert, addLog } from "../utils.js";
+import { invoke, invokeWithRetry, formatBytes, escapeHtml, escapeJs, showAlert, hideAlert, addLog, openUrl } from "../utils.js";
 import { state } from "../state.js";
 
 
@@ -349,6 +349,23 @@ function renderModDetail(mod) {
         btn.classList.remove("installed");
         btn.onclick = () => installMod(mod.publishedfileid, mod.title, btn);
     }
+
+    // Workshop Link
+    const workshopLink = document.getElementById("detail-workshop-link");
+    if (workshopLink) {
+        if (!mod.publishedfileid) {
+            workshopLink.style.display = "none";
+        } else {
+            const url = `https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.publishedfileid}`;
+            console.log(`[Browse] Setting Workshop Link for ${mod.publishedfileid}: ${url}`);
+            workshopLink.style.display = "inline-flex";
+            workshopLink.href = "javascript:void(0)";
+            workshopLink.onclick = (e) => {
+                e.preventDefault();
+                openUrl(url);
+            };
+        }
+    }
 }
 
 export function closeModDetail() {
@@ -416,6 +433,27 @@ window.addEventListener('item-installed', (event) => {
             // If grid is now empty, show empty message
             if (grid.children.length === 0) {
                 grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">No mods found matching criteria.</div>`;
+            }
+            break;
+        }
+    }
+});
+
+window.addEventListener('item-failed', (event) => {
+    const { id } = event.detail;
+    console.log(`[Browse] Notified of terminal failure: ${id}. Reverting button.`);
+
+    const grid = document.getElementById("mods-grid");
+    if (!grid) return;
+
+    const cards = grid.querySelectorAll(".mod-card");
+    for (const card of cards) {
+        if (card.dataset.id === id) {
+            const btn = card.querySelector(".install-btn");
+            if (btn) {
+                btn.textContent = "Install";
+                btn.className = "install-btn";
+                btn.disabled = false;
             }
             break;
         }

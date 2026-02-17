@@ -318,7 +318,7 @@
                         <label for="pp-dir">People Playground Game Folder</label>
                         <div style="display: flex; gap: 10px; width: 100%;">
                             <input type="text" id="pp-dir" style="flex: 1;"
-                                placeholder="C:\Program Files (x86)\Steam\steamapps\common\People Playground\Mods" />
+                                placeholder="C:\Program Files (x86)\Steam\steamapps\common\People Playground" />
                             <button class="icon-btn" onclick="browseForFolder()" title="Browse Folder"
                                 style="height: auto; width: 40px; border-radius: var(--radius-md);">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -331,6 +331,26 @@
                         </div>
                         <p class="helper-text">
                             Path to your People Playground install (containing Mods and Contraptions folders).
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="steamcmd-dir">Custom SteamCMD Path (Optional)</label>
+                        <div style="display: flex; gap: 10px; width: 100%;">
+                            <input type="text" id="steamcmd-dir" style="flex: 1;"
+                                placeholder="Leave empty for default (%APPDATA%\PPModManager\steamcmd)" />
+                            <button class="icon-btn" onclick="browseForSteamCMD()" title="Browse Folder"
+                                style="height: auto; width: 40px; border-radius: var(--radius-md);">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path
+                                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z">
+                                    </path>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="helper-text">
+                            If you have issues with downloads, you can point this to a known-working SteamCMD folder.
                         </p>
                     </div>
 
@@ -442,7 +462,7 @@
                             <div id="coll-detail-meta" class="coll-detail-meta"></div>
                             <div id="coll-detail-description" class="coll-detail-description"></div>
                             <div id="coll-detail-tags" class="detail-tags"></div>
-                            <a id="coll-detail-workshop-link" class="detail-workshop-link" href="" target="_blank">
+                            <a id="coll-detail-workshop-link" class="detail-workshop-link" href="javascript:void(0)">
                                 View on Steam Workshop →
                             </a>
                         </div>
@@ -538,7 +558,7 @@
                         <button id="detail-install-btn" class="btn-primary detail-install-btn" onclick="">Install
                             Mod</button>
 
-                        <a id="detail-workshop-link" class="detail-workshop-link" href="" target="_blank">
+                        <a id="detail-workshop-link" class="detail-workshop-link" href="javascript:void(0)">
                             View on Steam Workshop →
                         </a>
                     </aside>

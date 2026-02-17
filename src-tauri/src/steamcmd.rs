@@ -21,6 +21,7 @@ pub struct DownloadTask {
     pub progress: f32,
     pub message: String,
     pub content_type: String, // "mod" or "contraption"
+    pub retry_count: u32,
 }
 
 pub struct DownloadManager {
@@ -83,13 +84,24 @@ impl DownloadManager {
                                 task.progress = 1.0;
                                 task.message = "Installed successfully".to_string();
                                 task.content_type = ctype;
+                                *act = Some(task.clone());
                             }
                             Err(e) => {
-                                task.status = "failed".to_string();
-                                task.message = e;
+                                task.retry_count += 1;
+                                if task.retry_count < 3 {
+                                    task.status = "pending".to_string();
+                                    task.message = format!("Retrying (Attempt {}/3): {}", task.retry_count + 1, e);
+                                    *act = Some(task.clone());
+                                    // Re-enqueue at the end
+                                    let mut q = queue_clone.lock().unwrap();
+                                    q.push_back(task.clone());
+                                } else {
+                                    task.status = "failed".to_string();
+                                    task.message = format!("Failed after 3 attempts: {}", e);
+                                    *act = Some(task.clone());
+                                }
                             }
                         }
-                        *act = Some(task.clone());
                     }
                     emit_update_static(&handle_inner, &queue_clone, &active_clone);
                     
@@ -118,6 +130,7 @@ impl DownloadManager {
                 progress: 0.0,
                 message: "Queued".to_string(),
                 content_type: "".to_string(),
+                retry_count: 0,
             });
         }
         
@@ -208,8 +221,12 @@ fn process_downloaded_items(workshop_id: &str, download_path: &Path) -> Result<S
     }
 }
 
-/// Get the steamcmd install directory (%APPDATA%\PPModManager\steamcmd)
+/// Get the steamcmd install directory. Uses config if set, otherwise %APPDATA%\PPModManager\steamcmd
 fn steamcmd_dir() -> PathBuf {
+    let cfg = crate::config::load_config();
+    if !cfg.steamcmd_dir.is_empty() && cfg.steamcmd_dir != "steamcmd" {
+        return PathBuf::from(&cfg.steamcmd_dir);
+    }
     crate::config::app_data_dir().join("steamcmd")
 }
 
@@ -276,6 +293,14 @@ pub fn download_workshop_item(app_id: &str, workshop_id: &str) -> Result<String,
     let exe = steamcmd_exe();
     let dir = steamcmd_dir();
 
+    // Proactively clean up the .acf file to prevent SteamCMD from getting stuck in a corrupted "failure" state.
+    // This forces SteamCMD to re-check the workshop metadata for the People Playground AppID (1118200).
+    let acf_path = dir.join("steamapps").join("workshop").join("appworkshop_1118200.acf");
+    if acf_path.exists() {
+        println!("[SteamCMD] Cleaning up stuck metadata file: {:?}", acf_path);
+        let _ = fs::remove_file(&acf_path);
+    }
+
     println!(
         "Downloading workshop item {} for app {}...",
         workshop_id, app_id
@@ -319,10 +344,20 @@ pub fn download_workshop_item(app_id: &str, workshop_id: &str) -> Result<String,
     if download_path.is_dir() {
         Ok(download_path.to_string_lossy().to_string())
     } else {
+        let mut error_msg = format!("Download verification failed: Workshop folder not found.");
+        
+        if stdout.contains("failed (Failure)") {
+            error_msg = format!(
+                "Steam failed to provide the item. This usually happens if the mod is restricted to game owners (Anonymous login cannot download it) or if it has been removed from the Workshop."
+            );
+        } else if stdout.contains("No assignment") || stdout.contains("Access Denied") {
+             error_msg = format!("Access Denied. This mod requires a logged-in Steam account with game ownership.");
+        }
+
         Err(format!(
-            "Download verification failed: {:?} not found.\n\
-            SteamCMD output:\n{}",
-            download_path, stdout
+            "{}\n\nLast few lines of output:\n{}",
+            error_msg, 
+            stdout.lines().rev().take(10).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
         ))
     }
 }

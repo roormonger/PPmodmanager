@@ -10,6 +10,7 @@ export async function loadSettings() {
             // Update local state with mapped keys
             state.settings.apiKey = settings.steam_api_key || "";
             state.settings.gamePath = settings.people_playground_dir || "";
+            state.settings.steamcmdPath = settings.steamcmd_dir || "";
 
             // Populate Inputs
             const apiKeyInput = document.getElementById("api-key");
@@ -17,6 +18,9 @@ export async function loadSettings() {
 
             const ppDirInput = document.getElementById("pp-dir");
             if (ppDirInput) ppDirInput.value = state.settings.gamePath;
+
+            const steamcmdDirInput = document.getElementById("steamcmd-dir");
+            if (steamcmdDirInput) steamcmdDirInput.value = state.settings.steamcmdPath;
 
             // Check updates automatically if first load? (Optional)
             checkUpdates();
@@ -30,16 +34,19 @@ export async function loadSettings() {
 export async function saveSettings() {
     const apiKey = document.getElementById("api-key").value.trim();
     const gamePath = document.getElementById("pp-dir").value.trim();
+    const steamcmdPath = document.getElementById("steamcmd-dir").value.trim();
 
     try {
         await invoke("save_config_cmd", {
             steamApiKey: apiKey,
-            peoplePlaygroundDir: gamePath
+            peoplePlaygroundDir: gamePath,
+            steamcmdDir: steamcmdPath
         });
 
         // Update local state
         state.settings.apiKey = apiKey;
         state.settings.gamePath = gamePath;
+        state.settings.steamcmdPath = steamcmdPath;
 
         createToast("settings-saved", "success", "Settings Saved", "Configuration updated successfully.");
         hideAlert("settings-alert");
@@ -58,6 +65,22 @@ export async function browseForFolder() {
 
         if (selected) {
             document.getElementById("pp-dir").value = selected;
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+export async function browseForSteamCMD() {
+    try {
+        const selected = await window.__TAURI__.plugin.dialog.open({
+            directory: true,
+            multiple: false,
+            title: "Select SteamCMD Folder"
+        });
+
+        if (selected) {
+            document.getElementById("steamcmd-dir").value = selected;
         }
     } catch (e) {
         console.error(e);

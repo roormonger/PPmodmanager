@@ -19,17 +19,30 @@ export async function initDownloadQueue() {
         const payload = event.payload;
         console.log('Download queue update:', payload);
 
-        // Handle completion logic for real-time awareness
-        if (payload.active && payload.active.status === 'completed') {
+        // Handle completion/failure logic for real-time awareness
+        if (payload.active) {
             const task = payload.active;
-            if (!completedIds.has(task.id)) {
+            if (task.status === 'completed' && !completedIds.has(task.id)) {
                 completedIds.add(task.id);
                 handleTaskCompletion(task);
+            } else if (task.status === 'failed' && !completedIds.has(task.id)) {
+                completedIds.add(task.id);
+                handleTaskFailure(task);
             }
         }
 
         renderQueue(payload);
     });
+}
+
+function handleTaskFailure(task) {
+    console.error(`[Queue] Task failed: ${task.title} (${task.id}). Error: ${task.message}`);
+
+    // Broadcast event for other tabs to react (e.g. reset buttons)
+    const event = new CustomEvent('item-failed', {
+        detail: { id: task.id, title: task.title, error: task.message }
+    });
+    window.dispatchEvent(event);
 }
 
 function handleTaskCompletion(task) {

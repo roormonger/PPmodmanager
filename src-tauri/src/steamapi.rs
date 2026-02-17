@@ -63,8 +63,10 @@ pub struct VoteData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublishedFileDetail {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
     pub publishedfileid: String,
+    #[serde(default)]
+    pub result: u32,
     #[serde(default)]
     pub title: String,
     #[serde(default)]
@@ -357,8 +359,10 @@ pub struct ModTag {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModDetail {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
     pub publishedfileid: String,
+    #[serde(default)]
+    pub result: u32,
     #[serde(default)]
     pub title: String,
     #[serde(default)]

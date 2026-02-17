@@ -1,5 +1,5 @@
 // Collections Tab Logic
-import { invokeWithRetry, formatBytes, escapeHtml, escapeJs, createToast, showAlert, hideAlert, addLog } from "../utils.js";
+import { invokeWithRetry, formatBytes, escapeHtml, escapeJs, createToast, showAlert, hideAlert, addLog, openUrl } from "../utils.js";
 import { state } from "../state.js";
 import { installMod, openModDetail } from "./browse.js";
 import { loadInstalledMods, loadContraptions } from "./installed.js";
@@ -182,6 +182,23 @@ function renderCollectionDetail(coll) {
 
     document.getElementById("coll-detail-description").textContent = c.file_description || "";
 
+    // Workshop Link
+    const workshopLink = document.getElementById("coll-detail-workshop-link");
+    if (workshopLink) {
+        if (!c.publishedfileid) {
+            workshopLink.style.display = "none";
+        } else {
+            const url = `https://steamcommunity.com/sharedfiles/filedetails/?id=${c.publishedfileid}`;
+            console.log(`[Collections] Setting Workshop Link for ${c.publishedfileid}: ${url}`);
+            workshopLink.style.display = "inline-flex";
+            workshopLink.href = "javascript:void(0)";
+            workshopLink.onclick = (e) => {
+                e.preventDefault();
+                openUrl(url);
+            };
+        }
+    }
+
     // Render Items
     const list = document.getElementById("coll-detail-items-list");
     list.innerHTML = "";
@@ -235,19 +252,27 @@ function renderCollectionDetail(coll) {
             if (isContraption) typeLabel = "Contraption";
         }
 
+        const isInvalid = child.result === 9 || child.result === 8;
+        const invalidReason = child.result === 9 ? "Deleted/Private" : (child.result === 8 ? "Invalid" : "");
+
         row.innerHTML = `
             <img class="installed-item-img" src="${thumb}" alt="${escapeHtml(child.title)}" loading="lazy" />
             <div class="installed-item-info">
-                <div class="installed-item-title">${escapeHtml(child.title)}</div>
+                <div class="installed-item-title">
+                    ${escapeHtml(child.title)}
+                    ${isInvalid ? `<span class="badge badge-error" style="margin-left: 8px; font-size: 10px; padding: 2px 6px;">${invalidReason}</span>` : ""}
+                </div>
                 <div class="installed-item-meta">
                     ${child.creator_name ? `<span>by ${escapeHtml(child.creator_name)}</span>` : ""}
                 </div>
                 <div class="installed-item-meta" style="opacity: 0.7;">${typeLabel}</div>
             </div>
             <div class="installed-item-actions">
-                ${isInstalled
-                ? `<button class="btn-outline installed" disabled>Installed</button>`
-                : `<button class="btn-primary small" onclick="installCollectionItem('${child.publishedfileid}', '${escapeJs(child.title)}', this)">Install</button>`
+                ${isInvalid
+                ? `<button class="btn-outline" disabled title="This item is deleted or restricted by Steam">Unavailable</button>`
+                : (isInstalled
+                    ? `<button class="btn-outline installed" disabled>Installed</button>`
+                    : `<button class="btn-primary small" onclick="installCollectionItem('${child.publishedfileid}', '${escapeJs(child.title)}', this)">Install</button>`)
             }
             </div>
         `;
@@ -335,3 +360,23 @@ window.addEventListener('item-installed', (event) => {
     }
 });
 
+window.addEventListener('item-failed', (event) => {
+    const { id } = event.detail;
+    console.log(`[Collections] Notified of terminal failure: ${id}. Reverting button.`);
+
+    const detailList = document.getElementById("coll-detail-items-list");
+    if (!detailList) return;
+
+    const items = detailList.querySelectorAll(".installed-item");
+    for (const item of items) {
+        if (item.dataset.id === id) {
+            const btn = item.querySelector("button");
+            if (btn) {
+                btn.textContent = "Install";
+                btn.className = "btn-primary small";
+                btn.disabled = false;
+            }
+            break;
+        }
+    }
+});
