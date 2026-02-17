@@ -31,6 +31,8 @@ pub fn run() {
             steamcmd::list_installed_mods,
             steamcmd::list_installed_contraptions,
             steamcmd::delete_installed_mod,
+            steamcmd::open_mod_folder,
+            steamcmd::open_contraptions_folder,
             steamapi::search_collections_cmd,
             steamapi::get_collection_details_cmd,
             updater::check_for_updates,

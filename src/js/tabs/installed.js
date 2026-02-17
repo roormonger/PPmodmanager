@@ -30,6 +30,7 @@ export async function loadInstalledMods() {
 
         // Fetch details for each mod from Steam API to get titles/images
         const enriched = await enrichInstalledMods(mods);
+        state.installedModsList = enriched; // Save for filtering
 
         if (loading) loading.classList.add("hidden");
         renderInstalledMods(enriched, 'mod');
@@ -67,8 +68,8 @@ export async function loadContraptions() {
         state.contraptionsCache = items;
 
         // Fetch details for each mod from Steam API to get titles/images
-        // (Reuse enrichInstalledMods logic)
         const enriched = await enrichInstalledMods(items);
+        state.contraptionsList = enriched; // Save for filtering
 
         if (loading) loading.classList.add("hidden");
         renderInstalledMods(enriched, 'contraption');
@@ -76,8 +77,6 @@ export async function loadContraptions() {
         if (loading) loading.classList.add("hidden");
         console.error("Contraptions load error:", e);
         showAlert("contraptions-alert", "Failed to load contraptions: " + e);
-        // Note: added contraptions-alert to HTML in previous turn? 
-        // Checked index.html in Step 4328, line 193: <div id="contraptions-alert" class="alert hidden"></div> exists.
     }
 }
 
@@ -101,30 +100,23 @@ async function enrichInstalledMods(mods) {
     return results;
 }
 
-// Generic renderer for both Mods and Contraptions
-export function renderInstalledMods(items, type = "mod") {
-    const containerId = type === "mod" ? "installed-list" : "contraptions-list";
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.innerHTML = "";
+function renderInstalledMods(mods, type) {
+    const list = document.getElementById(type === 'mod' ? 'installed-list' : 'contraptions-list');
+    if (!list) return;
 
-    items.forEach(mod => {
+    list.innerHTML = "";
+
+    mods.forEach(mod => {
         const row = document.createElement("div");
         row.className = "installed-item";
 
-        let thumbSrc = mod.thumbnail_data
-            ? `data:image/jpeg;base64,${mod.thumbnail_data}`
-            : "icon.png";
-
-        if (mod.steam_image) thumbSrc = mod.steam_image;
-        if (!thumbSrc || thumbSrc === "icon.png") {
-            thumbSrc = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23222'%3E%3Crect width='64' height='64' /%3E%3C/svg%3E";
-        }
-
-        const title = mod.steam_title || mod.name || mod.folder_name;
+        const title = mod.steam_title || mod.title || mod.name || mod.folder_name;
         const author = mod.author || "Unknown";
-        const size = formatBytes(mod.folder_size);
-        const desc = mod.description || (mod.file_description ? mod.file_description.substring(0, 120) : "");
+        const size = formatBytes(mod.file_size || 0);
+        // Default thumb
+        let thumbSrc = mod.steam_image || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23222' %3E%3Crect width='64' height='64' /%3E%3C/svg%3E";
+
+        const desc = mod.description || "";
 
         row.innerHTML = `
             <img class="installed-item-img" src="${thumbSrc}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 64 64\\' fill=\\'%23222\\' %3E%3Crect width=\\'64\\' height=\\'64\\' /%3E%3C/svg%3E'" />
@@ -152,39 +144,58 @@ export function renderInstalledMods(items, type = "mod") {
                 createToast(mod.name || mod.folder_name, "error", "Cannot Open Detail", "This item is not linked to Steam Workshop.", 4000);
             }
         };
-
-        container.appendChild(row);
+        list.appendChild(row);
     });
 }
 
-export async function deleteInstalledItem(folderName, type = 'mod') {
-    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
-
+export async function deleteInstalledItem(folderName, type) {
+    if (!await confirm("Are you sure you want to delete this?")) return;
     try {
-        await invoke("delete_installed_mod", { workshopId: folderName });
-        if (type === 'mod') {
-            loadInstalledMods();
-        } else {
-            loadContraptions();
-        }
-        createToast(folderName, "success", `${type} deleted`, `${folderName} removed.`, 3000);
+        await invoke("delete_installed_mod", { folderName, type });
+        createToast("Deleted item successfully", "success");
+        if (type === 'mod') loadInstalledMods();
+        else loadContraptions();
     } catch (e) {
-        alert("Failed to delete: " + e);
+        createToast("Delete Failed", "error", "Error", String(e));
     }
 }
 
-export async function openModFolder() {
+export function filterInstalledMods(query) {
+    if (!state.installedModsList) return;
+    const q = query.toLowerCase();
+    const filtered = state.installedModsList.filter(mod => {
+        return (mod.name && mod.name.toLowerCase().includes(q)) ||
+            (mod.title && mod.title.toLowerCase().includes(q)) ||
+            (mod.steam_title && mod.steam_title.toLowerCase().includes(q)) ||
+            (mod.folder_name && mod.folder_name.toLowerCase().includes(q));
+    });
+    renderInstalledMods(filtered, 'mod');
+}
+
+export function filterContraptions(query) {
+    if (!state.contraptionsList) return;
+    const q = query.toLowerCase();
+    const filtered = state.contraptionsList.filter(item => {
+        return (item.name && item.name.toLowerCase().includes(q)) ||
+            (item.title && item.title.toLowerCase().includes(q)) ||
+            (item.steam_title && item.steam_title.toLowerCase().includes(q)) ||
+            (item.folder_name && item.folder_name.toLowerCase().includes(q));
+    });
+    renderInstalledMods(filtered, 'contraption');
+}
+
+export async function openModFolder(folderName) {
     try {
-        await invoke("open_mods_folder");
+        await invoke("open_mod_folder", { folderName });
     } catch (e) {
-        console.error(e);
+        createToast("Error opening folder", "error", "Error", String(e));
     }
 }
 
-export async function openContraptionsFolder() {
+export async function openContraptionsFolder(folderName) {
     try {
-        await invoke("open_mods_folder");
+        await invoke("open_contraptions_folder", { folderName });
     } catch (e) {
-        console.error(e);
+        createToast("Error opening folder", "error", "Error", String(e));
     }
 }

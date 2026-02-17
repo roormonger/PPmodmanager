@@ -547,3 +547,47 @@ pub async fn delete_installed_mod(
 
     Err(format!("Item '{}' not found in Mods or Contraptions.", workshop_id))
 }
+
+#[tauri::command]
+pub fn open_mod_folder(folder_name: String) -> Result<(), String> {
+    let cfg = crate::config::load_config();
+    let config_path = Path::new(&cfg.people_playground_dir);
+    let game_root = if config_path.ends_with("Mods") || config_path.ends_with("mods") {
+        config_path.parent().unwrap_or(config_path)
+    } else {
+        config_path
+    };
+
+    let path = game_root.join("Mods").join(&folder_name);
+    
+    if !path.exists() {
+        return Err(format!("Folder not found: {:?}", path));
+    }
+
+    #[cfg(target_os = "windows")]
+    Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_contraptions_folder(folder_name: String) -> Result<(), String> {
+    let cfg = crate::config::load_config();
+    let config_path = Path::new(&cfg.people_playground_dir);
+    let game_root = if config_path.ends_with("Mods") || config_path.ends_with("mods") {
+        config_path.parent().unwrap_or(config_path)
+    } else {
+        config_path
+    };
+
+    let path = game_root.join("Contraptions").join(&folder_name);
+    
+    if !path.exists() {
+        return Err(format!("Folder not found: {:?}", path));
+    }
+
+    #[cfg(target_os = "windows")]
+    Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
+    
+    Ok(())
+}

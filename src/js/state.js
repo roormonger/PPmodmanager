@@ -3,8 +3,10 @@
 export const state = {
     currentMods: [],
     installedModsCache: [],
+    installedModsList: [], // Enriched list for filtering
     nextCursor: "",
     contraptionsCache: [],
+    contraptionsList: [], // Enriched list for filtering
     currentCollections: [],
 
     // Settings state (could be loaded from backend, but kept here for runtime cache)

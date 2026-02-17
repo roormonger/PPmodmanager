@@ -1,8 +1,8 @@
 // Main Entry Point
 import { state, resetSearchState } from "./state.js";
-import { loadSettings, browseForFolder, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs } from "./tabs/settings.js";
+import { loadSettings, browseForFolder, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs, toggleApiKeyVisibility } from "./tabs/settings.js";
 import { searchMods, openModDetail, closeModDetail, installMod } from "./tabs/browse.js";
-import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder } from "./tabs/installed.js";
+import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder, filterInstalledMods, filterContraptions } from "./tabs/installed.js";
 import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem } from "./tabs/collections.js";
 
 // ── Tab Switching ───────────────────────────────
@@ -93,7 +93,10 @@ function exposeToWindow() {
     window.deleteInstalledItem = deleteInstalledItem;
     window.openModFolder = openModFolder;
     window.openContraptionsFolder = openContraptionsFolder;
-    // loadInstalledMods / loadContraptions called by switchTab
+    window.loadInstalledMods = loadInstalledMods;
+    window.loadContraptions = loadContraptions;
+    window.filterInstalledMods = filterInstalledMods;
+    window.filterContraptions = filterContraptions;
 
     // Collections
     window.searchCollections = (reset) => searchCollections(reset);
@@ -110,6 +113,7 @@ function exposeToWindow() {
     window.toggleLogs = toggleLogs;
     window.copyLogs = copyLogs;
     window.clearLogs = clearLogs;
+    window.toggleApiKeyVisibility = toggleApiKeyVisibility;
 }
 
 // Start

@@ -93,10 +93,20 @@ body {
     letter-spacing: -0.3px;
 }
 
+.sidebar-header {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.8px;
+    margin: 20px 24px 6px;
+    opacity: 0.6;
+}
+
 .nav-list {
     list-style: none;
-    padding: 12px 10px;
-    flex: 1;
+    padding: 0 10px;
+    margin: 0;
 }
 
 .nav-btn {
@@ -129,6 +139,7 @@ body {
 }
 
 .sidebar-footer {
+    margin-top: auto;
     padding: 14px 18px;
     border-top: 1px solid var(--border);
 }
@@ -215,7 +226,7 @@ body {
     color: var(--text-muted);
 }
 
-#search-btn {
+.search-btn {
     padding: 8px 18px;
     background: var(--accent);
     color: white;
@@ -228,7 +239,7 @@ body {
     transition: background var(--transition);
 }
 
-#search-btn:hover {
+.search-btn:hover {
     background: var(--accent-hover);
 }
 
@@ -666,11 +677,47 @@ input[type=range]::-webkit-slider-thumb:hover {
     background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: 13px;
+    color: var(--text-main);
     font-family: inherit;
-    outline: none;
+    font-size: 14px;
     transition: border-color var(--transition);
+}
+
+.password-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.password-container input {
+    padding-right: 45px;
+    /* Space for the eye icon */
+}
+
+.icon-toggle-btn {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color var(--transition), background var(--transition);
+}
+
+.icon-toggle-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.icon-toggle-btn .eye-icon {
+    width: 20px;
+    height: 20px;
 }
 
 .form-group input:focus {
