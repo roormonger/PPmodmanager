@@ -1,5 +1,5 @@
 // Settings Tab Logic
-import { invoke, createToast, showAlert, hideAlert, addLog } from "../utils.js";
+import { invoke, invokeWithRetry, showAlert, hideAlert, addLog } from "../utils.js";
 import { state } from "../state.js";
 
 // Load settings from backend and populate UI
@@ -33,6 +33,14 @@ export async function loadSettings() {
             state.settings.installedSortDir = settings.installed_sort_dir || "desc";
             state.settings.contraptionsSortBy = settings.contraptions_sort_by || "date";
             state.settings.contraptionsSortDir = settings.contraptions_sort_dir || "desc";
+
+            // Load Metadata Cache
+            try {
+                state.metadataCache = await invoke("load_metadata_cache_cmd");
+                addLog(`[Settings] Loaded ${Object.keys(state.metadataCache).length} cached mod metadata entries`, "info");
+            } catch (e) {
+                console.error("[Settings] Failed to load metadata cache:", e);
+            }
 
             // Populate Inputs
             const apiKeyInput = document.getElementById("api-key");
@@ -69,6 +77,14 @@ export async function saveUiState() {
         });
     } catch (e) {
         console.error("[Settings] Failed to save dynamic UI state:", e);
+    }
+}
+
+export async function saveMetadataCache() {
+    try {
+        await invoke("save_metadata_cache_cmd", { cache: state.metadataCache });
+    } catch (e) {
+        console.error("[Settings] Failed to save metadata cache:", e);
     }
 }
 

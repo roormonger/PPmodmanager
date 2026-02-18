@@ -1,7 +1,8 @@
 // Installed Mods & Contraptions Logic
-import { invoke, formatBytes, escapeHtml, escapeJs, createToast, showAlert, hideAlert } from "../utils.js";
+import { invoke, formatBytes, escapeHtml, escapeJs, createToast, showAlert, hideAlert, addLog } from "../utils.js";
 import { state } from "../state.js";
 import { openModDetail } from "./browse.js"; // Reuse detail view
+import { saveMetadataCache, saveUiState } from "./settings.js";
 
 export async function loadInstalledMods() {
     const list = document.getElementById("installed-list");
@@ -88,21 +89,57 @@ export async function loadContraptions() {
 
 async function enrichInstalledMods(mods) {
     const results = [];
+    const missingIds = [];
+    const cache = state.metadataCache || {};
+
+    // First pass: Use cache
     for (const mod of mods) {
         let enriched = { ...mod };
-
         if (mod.ugc_id) {
-            try {
-                const detail = await invoke("get_mod_details_cmd", { publishedFileId: mod.ugc_id });
-                enriched.steam_title = detail.title;
-                enriched.steam_image = detail.preview_url;
-                enriched.author = detail.creator_name || enriched.author;
-            } catch {
-                // Steam API failed, keep local data
+            if (cache[mod.ugc_id]) {
+                const cached = cache[mod.ugc_id];
+                enriched.steam_title = cached.title;
+                enriched.steam_image = cached.preview_url;
+                enriched.author = cached.author;
+            } else {
+                missingIds.push(mod.ugc_id);
             }
         }
         results.push(enriched);
     }
+
+    // Second pass: Fetch missing in batch
+    if (missingIds.length > 0) {
+        addLog(`[Installed] Fetching missing metadata for ${missingIds.length} items in batch...`, "info");
+        try {
+            const batchDetails = await invoke("get_multiple_mod_details_cmd", { publishedFileIds: missingIds });
+
+            // Update results and cache
+            for (const enriched of results) {
+                if (enriched.ugc_id && batchDetails[enriched.ugc_id]) {
+                    const detail = batchDetails[enriched.ugc_id];
+                    enriched.steam_title = detail.title;
+                    enriched.steam_image = detail.preview_url;
+                    enriched.author = detail.creator_name || enriched.author;
+
+                    // Update local cache
+                    cache[enriched.ugc_id] = {
+                        title: detail.title,
+                        author: enriched.author,
+                        preview_url: detail.preview_url
+                    };
+                }
+            }
+
+            // Save cache back to disk
+            state.metadataCache = cache;
+            saveMetadataCache();
+        } catch (e) {
+            console.error("[Installed] Batch fetch failed:", e);
+            addLog(`[Installed] Batch fetch failed: ${e}`, "error");
+        }
+    }
+
     return results;
 }
 

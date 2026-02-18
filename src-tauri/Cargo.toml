@@ -17,6 +17,7 @@ base64 = "0.22"
 md5 = "0.7"
 tauri-plugin-dialog = "2"
 once_cell = "1.21.3"
+rayon = "1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

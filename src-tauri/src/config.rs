@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -39,6 +40,13 @@ fn default_browse_sort() -> u32 { 3 }
 fn default_browse_days() -> u32 { 7 }
 fn default_mod_sort() -> String { "date".to_string() }
 fn default_desc() -> String { "desc".to_string() }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedMetadata {
+    pub title: String,
+    pub author: String,
+    pub preview_url: String,
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -140,4 +148,28 @@ pub fn save_ui_state_cmd(
     config.contraptions_sort_by = contraptions_sort_by;
     config.contraptions_sort_dir = contraptions_sort_dir;
     save_config(&config)
+}
+
+fn metadata_cache_path() -> PathBuf {
+    app_data_dir().join("metadata_cache.json")
+}
+
+#[tauri::command]
+pub fn load_metadata_cache_cmd() -> HashMap<String, CachedMetadata> {
+    let path = metadata_cache_path();
+    if path.exists() {
+        let data = fs::read_to_string(&path).unwrap_or_default();
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        HashMap::new()
+    }
+}
+
+#[tauri::command]
+pub fn save_metadata_cache_cmd(cache: HashMap<String, CachedMetadata>) -> Result<(), String> {
+    let dir = app_data_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create app data dir: {}", e))?;
+    let path = metadata_cache_path();
+    let data = serde_json::to_string_pretty(&cache).map_err(|e| e.to_string())?;
+    fs::write(&path, data).map_err(|e| format!("Failed to save metadata cache: {}", e))
 }

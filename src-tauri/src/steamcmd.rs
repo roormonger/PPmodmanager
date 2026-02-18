@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize as SerdeDeserialize, Deserialize};
 use tauri::{AppHandle, Emitter};
+use rayon::prelude::*;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -625,41 +626,46 @@ pub async fn list_installed_contraptions(
 
 fn scan_installed_items(dir: &Path) -> Result<Vec<InstalledMod>, String> {
     if !dir.exists() { return Ok(vec![]); }
-    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let entries: Vec<_> = fs::read_dir(dir)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .collect();
 
-    let mut items = Vec::new();
-    for entry in entries.flatten() {
-         let dir_path = entry.path();
-         if !dir_path.is_dir() { continue; }
+    let items: Vec<InstalledMod> = entries.into_par_iter()
+        .filter_map(|entry| {
+            let dir_path = entry.path();
+            if !dir_path.is_dir() { return None; }
 
-         let folder_name = entry.file_name().to_string_lossy().to_string();
-         let size = dir_size(&dir_path);
-         let json = parse_mod_json(&dir_path);
+            let folder_name = entry.file_name().to_string_lossy().to_string();
+            let size = dir_size(&dir_path);
+            let json = parse_mod_json(&dir_path);
 
-         let ugc_id = if is_numeric(&folder_name) {
-             folder_name.clone()
-         } else if let Some(ref j) = json {
-             j.creator_ugc_identity.clone().unwrap_or_default()
-         } else {
-             String::new()
-         };
+            let ugc_id = if is_numeric(&folder_name) {
+                folder_name.clone()
+            } else if let Some(ref j) = json {
+                j.creator_ugc_identity.clone().unwrap_or_default()
+            } else {
+                String::new()
+            };
 
-         let name = json.as_ref().map(|j| j.name.clone()).unwrap_or_else(|| folder_name.clone());
-         let author = json.as_ref().map(|j| j.author.clone()).unwrap_or_default();
-         let description = json.as_ref().map(|j| j.description.clone()).unwrap_or_default();
-         let thumbnail_data = find_thumbnail(&dir_path).unwrap_or_default();
-         
-         let created_at = dir_path.metadata()
-             .and_then(|m| m.created())
-             .map_err(|e| e) // Keep as io::Error
-             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).map_err(|_| io::Error::new(io::ErrorKind::Other, "Time error")))
-             .map(|d| d.as_secs())
-             .unwrap_or(0);
+            let name = json.as_ref().map(|j| j.name.clone()).unwrap_or_else(|| folder_name.clone());
+            let author = json.as_ref().map(|j| j.author.clone()).unwrap_or_default();
+            let description = json.as_ref().map(|j| j.description.clone()).unwrap_or_default();
+            let thumbnail_data = find_thumbnail(&dir_path).unwrap_or_default();
+            
+            let created_at = dir_path.metadata()
+                .and_then(|m| m.created())
+                .map_err(|e| e)
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).map_err(|_| io::Error::new(io::ErrorKind::Other, "Time error")))
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
 
-         items.push(InstalledMod {
-             folder_name, folder_size: size, created_at, ugc_id, name, author, description, thumbnail_data
-         });
-    }
+            Some(InstalledMod {
+                folder_name, folder_size: size, created_at, ugc_id, name, author, description, thumbnail_data
+            })
+        })
+        .collect();
+
     Ok(items)
 }
 

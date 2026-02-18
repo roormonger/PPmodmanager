@@ -409,6 +409,76 @@ struct DetailWrapper {
 }
 
 #[tauri::command]
+pub async fn get_multiple_mod_details_cmd(
+    state: tauri::State<'_, crate::config::ConfigState>,
+    published_file_ids: Vec<String>,
+) -> Result<HashMap<String, ModDetail>, String> {
+    if published_file_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let api_key = {
+        let config = state.0.lock().unwrap();
+        if config.steam_api_key.is_empty() {
+            return Err("Steam API Key not configured.".to_string());
+        }
+        config.steam_api_key.clone()
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    // Prepare query parameters
+    let mut query_params: Vec<(String, String)> = vec![
+        ("key".to_string(), api_key.clone()),
+        ("includevotes".to_string(), "true".to_string()),
+        ("includetags".to_string(), "true".to_string()),
+        ("includeadditionalpreviews".to_string(), "true".to_string()),
+        ("includemetadata".to_string(), "true".to_string()),
+        ("return_playtime_stats".to_string(), "0".to_string()),
+        ("strip_description_bbcode".to_string(), "true".to_string()),
+    ];
+
+    for (i, id) in published_file_ids.iter().enumerate() {
+        query_params.push((format!("publishedfileids[{}]", i), id.clone()));
+    }
+
+    let mut last_err = String::new();
+    let mut resp = None;
+    for attempt in 0..3 {
+        match client
+            .get("https://api.steampowered.com/IPublishedFileService/GetDetails/v1/")
+            .query(&query_params)
+            .send()
+            .await
+        {
+            Ok(r) => { resp = Some(r); break; }
+            Err(e) => {
+                last_err = format!("Batch HTTP request failed: {}", e);
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+    let resp = resp.ok_or(last_err)?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Steam API (Batch) returned status {}", resp.status()));
+    }
+
+    let wrapper = resp.json::<DetailWrapper>().await.map_err(|e| format!("Failed to parse batch details: {}", e))?;
+    let mut results = HashMap::new();
+    for detail in wrapper.response.publishedfiledetails {
+        results.insert(detail.publishedfileid.clone(), detail);
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
 pub async fn get_mod_details_cmd(
     state: tauri::State<'_, crate::config::ConfigState>,
     published_file_id: String,

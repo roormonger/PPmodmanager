@@ -9,6 +9,7 @@ export const state = {
     contraptionsList: [], // Enriched list for filtering
     currentCollections: [],
     currentCollectionItems: [], // Items in the currently viewed collection
+    metadataCache: {}, // { ugc_id: { title, author, preview_url } }
 
     // Settings state (could be loaded from backend, but kept here for runtime cache)
     settings: {
