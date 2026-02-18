@@ -148,11 +148,27 @@ export function renderMods() {
                 ${author ? `<div class="mod-card-author">by ${escapeHtml(author)}</div>` : ""}
             </div>
             <div class="mod-card-footer">
-                <button class="install-btn" onclick="event.stopPropagation(); installMod('${mod.publishedfileid}', '${escapeJs(mod.title)}', this)">Install</button>
+                <button class="install-btn">Install</button>
             </div>
         `;
+
         card.style.cursor = "pointer";
-        card.onclick = () => openModDetail(mod.publishedfileid);
+
+        // Separate logic for install button to ensure it stops propagation reliably
+        const installBtn = card.querySelector('.install-btn');
+        installBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            installMod(mod.publishedfileid, mod.title, installBtn);
+        });
+
+        // Card click logic with "Double Lock"
+        card.addEventListener('click', (e) => {
+            // If the user clicked the install button (or anything inside it), ignore the card click
+            if (e.target.closest('.install-btn')) return;
+
+            openModDetail(mod.publishedfileid);
+        });
+
         grid.appendChild(card);
     });
 }

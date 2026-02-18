@@ -176,20 +176,27 @@ function renderInstalledMods(mods, type) {
                 </div>
                 ${desc ? `<div class="installed-item-desc">${escapeHtml(desc)}</div>` : ""}
             </div>
-            <button class="installed-delete-btn" onclick="event.stopPropagation(); deleteInstalledItem('${escapeJs(mod.folder_name)}', '${type}')">Delete</button>
+            <button class="installed-delete-btn">Delete</button>
         `;
 
         row.style.cursor = "pointer";
-        row.onclick = (e) => {
-            // Prevent if clicking buttons
-            if (e.target.tagName === "BUTTON") return;
+
+        const deleteBtn = row.querySelector('.installed-delete-btn');
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteInstalledItem(mod.folder_name, type);
+        });
+
+        row.addEventListener('click', (e) => {
+            // Robust check: if clicking a button (or inside one), exit
+            if (e.target.closest('button')) return;
 
             if (mod.ugc_id) {
                 openModDetail(mod.ugc_id);
             } else {
                 createToast(mod.name || mod.folder_name, "error", "Cannot Open Detail", "This item is not linked to Steam Workshop.", 4000);
             }
-        };
+        });
         list.appendChild(row);
     });
 }

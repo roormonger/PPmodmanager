@@ -118,7 +118,9 @@ export function renderCollections() {
             </div>
         `;
 
-        item.onclick = () => openCollectionDetail(coll.publishedfileid);
+        item.addEventListener('click', (e) => {
+            openCollectionDetail(coll.publishedfileid);
+        });
         list.appendChild(item);
     });
 }
@@ -239,11 +241,11 @@ function renderCollectionDetail(coll) {
         row.style.cursor = "pointer"; // Indicate clickable
 
         // Navigate to mod detail on click (excluding install button)
-        row.onclick = (e) => {
-            // Prevent if clicking the install/delete button
-            if (e.target.tagName === "BUTTON") return;
+        row.addEventListener('click', (e) => {
+            // Robust check: if clicking a button (or inside one), exit
+            if (e.target.closest('button')) return;
             openModDetail(child.publishedfileid);
-        };
+        });
 
         let thumb = child.preview_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23222'%3E%3Crect width='64' height='64' /%3E%3C/svg%3E";
 
@@ -282,10 +284,18 @@ function renderCollectionDetail(coll) {
                 ? `<button class="btn-outline" disabled title="This item is deleted or restricted by Steam">Unavailable</button>`
                 : (isInstalled
                     ? `<button class="btn-outline installed" disabled>Installed</button>`
-                    : `<button class="btn-primary small" onclick="installCollectionItem('${child.publishedfileid}', '${escapeJs(child.title)}', this)">Install</button>`)
+                    : `<button class="btn-primary small">Install</button>`)
             }
             </div>
         `;
+
+        const installBtn = row.querySelector('.btn-primary.small');
+        if (installBtn) {
+            installBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                installCollectionItem(child.publishedfileid, child.title, installBtn);
+            });
+        }
 
         // Re-attach specific onclick for the button to prevent bubbling or handle separately?
         // the row.onclick handles filtering, but the button needs its own handler wired in HTML string?
