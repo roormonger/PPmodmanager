@@ -1,6 +1,7 @@
 // Collections Tab Logic
 import { invokeWithRetry, formatBytes, escapeHtml, escapeJs, createToast, showAlert, hideAlert, addLog, openUrl } from "../utils.js";
 import { state } from "../state.js";
+import { saveUiState } from "./settings.js";
 import { installMod, openModDetail } from "./browse.js";
 import { loadInstalledMods, loadContraptions } from "./installed.js";
 
@@ -13,7 +14,16 @@ export async function searchCollections(reset = true) {
     }
 
     const query = document.getElementById("collections-search-input").value.trim();
-    const sortType = parseInt(document.getElementById("coll-sort-type").value);
+    const sortTypeSelector = document.getElementById("coll-sort-type");
+    const sortType = parseInt(sortTypeSelector.value);
+
+    const sortDaysSelector = document.getElementById("coll-sort-days");
+    const sortDays = parseInt(sortDaysSelector.value || "7");
+
+    // Update State
+    state.settings.collSortType = sortType;
+    state.settings.collSortDays = sortDays;
+    saveUiState();
     const cursor = state.nextCursor;
 
     const loadingEl = document.getElementById("collections-loading");
@@ -30,7 +40,7 @@ export async function searchCollections(reset = true) {
             query,
             cursor,
             sortType,
-            days: 7 // hardcoded for now or add UI
+            days: sortDays
         });
 
         addLog(`[Collections] Got ${data?.publishedfiledetails?.length || 0} items.`, "info");
@@ -291,6 +301,17 @@ export function closeCollectionDetail() {
     }
 }
 
+export function toggleCollSortDir() {
+    const current = state.settings.collSortDir || "desc";
+    state.settings.collSortDir = current === "desc" ? "asc" : "desc";
+
+    const btn = document.getElementById("coll-sort-dir-btn");
+    if (btn) btn.textContent = state.settings.collSortDir === "asc" ? "▲" : "▼";
+
+    saveUiState();
+    searchCollections();
+}
+
 export async function installCollectionItem(id, title, btn) {
     if (btn.classList.contains("installed")) return;
 
@@ -380,3 +401,15 @@ window.addEventListener('item-failed', (event) => {
         }
     }
 });
+
+export function syncCollectionsUi() {
+    console.log("[Collections] Syncing UI to state...");
+    const selector = document.getElementById("coll-sort-type");
+    if (selector) selector.value = state.settings.collSortType;
+
+    const daysSelector = document.getElementById("coll-sort-days");
+    if (daysSelector) daysSelector.value = state.settings.collSortDays || 7;
+
+    const btn = document.getElementById("coll-sort-dir-btn");
+    if (btn) btn.textContent = state.settings.collSortDir === "asc" ? "▲" : "▼";
+}

@@ -1,6 +1,13 @@
 // Browse Tab Logic
 import { invoke, invokeWithRetry, formatBytes, escapeHtml, escapeJs, showAlert, hideAlert, addLog, openUrl } from "../utils.js";
 import { state } from "../state.js";
+import { saveUiState } from "./settings.js";
+
+const ALL_TAGS = [
+    "Contraption", "Structure", "Vehicle", "Human",
+    "Clothing", "Weapon", "Armor", "Explosive",
+    "Melee", "Firearm", "Mod"
+];
 
 
 // Re-export openModDetail so it can be used by other tabs if needed (e.g. from installed list)
@@ -15,13 +22,25 @@ export async function searchMods(reset = true) {
     }
 
     const query = document.getElementById("search-input").value.trim();
-    const sortType = parseInt(document.getElementById("sort-type").value);
-    const sortDays = parseInt(document.getElementById("sort-days").value);
+    const sortTypeSelector = document.getElementById("sort-type");
+    const sortDaysSelector = document.getElementById("sort-days");
+
+    let sortType = parseInt(sortTypeSelector.value);
+    const sortDays = parseInt(sortDaysSelector.value);
+
+    // Update state
+    state.settings.sortType = sortType;
+    state.settings.sortDays = sortDays;
+    saveUiState();
+
+    // Apply Sort Direction Mapping for Steam API (only 0/Top Rated supports Ascending via 10)
+    if (state.settings.browseSortDir === "asc" && sortType === 0) {
+        sortType = 10; // RankedByTotalVotesAsc
+    }
+
     const cursor = state.nextCursor;
 
-    // Filters
-    const selectedTags = Array.from(document.querySelectorAll("#filter-tags input:checked"))
-        .map(cb => cb.value);
+    const selectedTags = state.settings.browseTags || [];
 
     // Initial loading UI
     const loadingEl = document.getElementById("mods-loading");
@@ -31,13 +50,8 @@ export async function searchMods(reset = true) {
     }
 
     // Logic for "All" tags optimization
-    const ALL_TAGS = [
-        "Contraption", "Structure", "Vehicle", "Human",
-        "Clothing", "Weapon", "Armor", "Explosive",
-        "Melee", "Firearm", "Mod" // Added Mod tag
-    ];
-    let tagsToSend = selectedTags;
-    if (selectedTags.length === ALL_TAGS.length) tagsToSend = [];
+    let tagsToSend = state.settings.browseTags || [];
+    if (tagsToSend.length === ALL_TAGS.length) tagsToSend = [];
 
     hideAlert("mods-alert");
     try {
@@ -413,49 +427,129 @@ export async function installMod(publishedFileId, title, btnElement) {
         createToast("error", "error", "Queue Error", String(e));
     }
 }
-// ── Real-time Updates ───────────────────────────
-window.addEventListener('item-installed', (event) => {
-    const { id, type } = event.detail;
-    console.log(`[Browse] Notified of installation: ${id} (${type})`);
+// ── UI Init & Helpers ───────────────────────────
+export function initBrowseTab() {
+    console.log("[Browse] Initializing tab UI...");
 
-    // Find the card in the grid and remove it
-    const grid = document.getElementById("mods-grid");
-    if (!grid) return;
+    // 1. Sync Inputs to State
+    const sortToggle = document.getElementById("sort-type");
+    if (sortToggle) sortToggle.value = state.settings.sortType;
 
-    const cards = grid.querySelectorAll(".mod-card");
-    for (const card of cards) {
-        // We can find the ID by looking at the onclick or storing it in a data-attribute.
-        // Let's check card.innerHTML or just use a data attribute (which we should add in renderMods).
-        if (card.dataset.id === id) {
-            console.log(`[Browse] Removing installed card: ${id}`);
-            card.remove();
+    const daysToggle = document.getElementById("sort-days");
+    if (daysToggle) daysToggle.value = state.settings.sortDays;
 
-            // If grid is now empty, show empty message
-            if (grid.children.length === 0) {
-                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">No mods found matching criteria.</div>`;
-            }
-            break;
-        }
+    const dirBtn = document.getElementById("sort-dir-btn");
+    updateSortDirBtn();
+
+    // 2. Render Tags
+    renderTagsDropdown();
+}
+
+export function renderTagsDropdown() {
+    const list = document.getElementById("tags-list");
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    const selected = state.settings.browseTags || [];
+
+    ALL_TAGS.forEach(tag => {
+        const isChecked = selected.includes(tag);
+        const div = document.createElement("div");
+        div.className = `custom-option ${isChecked ? 'selected' : ''}`;
+        div.onclick = (e) => {
+            e.stopPropagation();
+            toggleTag(tag);
+        };
+        div.innerHTML = `
+            <input type="checkbox" ${isChecked ? "checked" : ""} readonly>
+            <span>${tag}</span>
+        `;
+        list.appendChild(div);
+    });
+
+    updateTagLabel();
+}
+
+export function toggleTagsDropdown() {
+    const container = document.getElementById("tags-dropdown");
+    if (container) {
+        container.querySelector(".custom-select-options").classList.toggle("open");
+    }
+}
+
+// Global click to close dropdown (handled in main.js ideally, but browse.js works too)
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('tags-dropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        dropdown.querySelector(".custom-select-options").classList.remove("open");
     }
 });
 
-window.addEventListener('item-failed', (event) => {
-    const { id } = event.detail;
-    console.log(`[Browse] Notified of terminal failure: ${id}. Reverting button.`);
-
-    const grid = document.getElementById("mods-grid");
-    if (!grid) return;
-
-    const cards = grid.querySelectorAll(".mod-card");
-    for (const card of cards) {
-        if (card.dataset.id === id) {
-            const btn = card.querySelector(".install-btn");
-            if (btn) {
-                btn.textContent = "Install";
-                btn.className = "install-btn";
-                btn.disabled = false;
-            }
-            break;
-        }
+function toggleTag(tag) {
+    let current = state.settings.browseTags || [];
+    if (current.includes(tag)) {
+        current = current.filter(t => t !== tag);
+    } else {
+        current.push(tag);
     }
-});
+    state.settings.browseTags = current;
+
+    renderTagsDropdown();
+    saveUiState();
+    searchMods();
+}
+
+export function toggleAllTags() {
+    const current = state.settings.browseTags || [];
+    if (current.length === ALL_TAGS.length) {
+        state.settings.browseTags = [];
+    } else {
+        state.settings.browseTags = [...ALL_TAGS];
+    }
+
+    renderTagsDropdown();
+    saveUiState();
+    searchMods();
+}
+
+function updateTagLabel() {
+    const label = document.getElementById("tags-label");
+    if (!label) return;
+
+    const selected = state.settings.browseTags || [];
+    if (selected.length === ALL_TAGS.length) {
+        label.textContent = "All Tags";
+    } else if (selected.length === 0) {
+        label.textContent = "No Tags";
+    } else {
+        label.textContent = `${selected.length} Selected`;
+    }
+}
+
+export function toggleSortDir() {
+    const current = state.settings.browseSortDir;
+    state.settings.browseSortDir = current === "desc" ? "asc" : "desc";
+
+    updateSortDirBtn();
+    saveUiState();
+    searchMods();
+}
+
+function updateSortDirBtn() {
+    const btn = document.getElementById("sort-dir-btn");
+    if (!btn) return;
+
+    const sortType = state.settings.sortType;
+    // Steam API mostly supports custom sort direction only for certain types
+    // We'll show it for Top Rated (0) and Most Recent (1)
+    if (sortType == 0 || sortType == 1) {
+        btn.style.display = "flex";
+    } else {
+        btn.style.display = "none";
+    }
+
+    const isDesc = state.settings.browseSortDir === "desc";
+    btn.textContent = isDesc ? "▼" : "▲";
+    btn.title = isDesc ? "Descending" : "Ascending";
+}

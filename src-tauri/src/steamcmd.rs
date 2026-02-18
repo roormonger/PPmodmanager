@@ -588,7 +588,14 @@ pub async fn list_installed_mods(
              return Ok(vec![]);
         }
         let p = Path::new(&config.people_playground_dir);
-        if p.ends_with("Mods") || p.ends_with("mods") { p.to_path_buf() } else { p.join("Mods") }
+        let s = p.to_string_lossy().to_lowercase();
+        if s.ends_with("mods") { 
+            p.to_path_buf() 
+        } else if s.ends_with("contraptions") {
+            p.parent().unwrap_or(p).join("Mods")
+        } else {
+            p.join("Mods")
+        }
     };
 
     scan_installed_items(&mods_dir)
@@ -604,7 +611,12 @@ pub async fn list_installed_contraptions(
              return Ok(vec![]);
         }
         let p = Path::new(&config.people_playground_dir);
-        let root = if p.ends_with("Mods") || p.ends_with("mods") { p.parent().unwrap() } else { p };
+        let s = p.to_string_lossy().to_lowercase();
+        let root = if s.ends_with("mods") || s.ends_with("contraptions") { 
+            p.parent().unwrap_or(p) 
+        } else { 
+            p 
+        };
         root.join("Contraptions")
     };
 
@@ -663,7 +675,12 @@ pub async fn delete_installed_mod(
     
     let config = state.0.lock().unwrap();
     let p = Path::new(&config.people_playground_dir);
-    let root = if p.ends_with("Mods") || p.ends_with("mods") { p.parent().unwrap() } else { p };
+    let s = p.to_string_lossy().to_lowercase();
+    let root = if s.ends_with("mods") || s.ends_with("contraptions") { 
+        p.parent().unwrap_or(p) 
+    } else { 
+        p 
+    };
     
     let mod_path = root.join("Mods").join(&workshop_id);
     if mod_path.exists() {

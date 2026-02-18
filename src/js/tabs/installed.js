@@ -34,6 +34,9 @@ export async function loadInstalledMods() {
 
         if (loading) loading.classList.add("hidden");
         renderInstalledMods(enriched, 'mod');
+
+        // Apply initial sort filter
+        filterInstalledMods("");
     } catch (e) {
         if (loading) loading.classList.add("hidden");
         showAlert("installed-alert", String(e));
@@ -73,6 +76,9 @@ export async function loadContraptions() {
 
         if (loading) loading.classList.add("hidden");
         renderInstalledMods(enriched, 'contraption');
+
+        // Apply initial sort filter
+        filterContraptions("");
     } catch (e) {
         if (loading) loading.classList.add("hidden");
         console.error("Contraptions load error:", e);
@@ -168,6 +174,10 @@ export function filterInstalledMods(query) {
     const sortType = document.getElementById("installed-sort-type").value;
     const sortDir = state.settings.installedSortDir;
 
+    // Update state
+    state.settings.installedSortBy = sortType;
+    saveUiState();
+
     let filtered = state.installedModsList.filter(mod => {
         return (mod.name && mod.name.toLowerCase().includes(q)) ||
             (mod.title && mod.title.toLowerCase().includes(q)) ||
@@ -188,6 +198,10 @@ export function filterContraptions(query) {
     // Get Sort Settings
     const sortType = document.getElementById("contraptions-sort-type").value;
     const sortDir = state.settings.contraptionsSortDir;
+
+    // Update state
+    state.settings.contraptionsSortBy = sortType;
+    saveUiState();
 
     let filtered = state.contraptionsList.filter(item => {
         return (item.name && item.name.toLowerCase().includes(q)) ||
@@ -228,6 +242,7 @@ export function toggleLocalSortDir(type) {
     const current = state.settings[key];
     const next = current === 'asc' ? 'desc' : 'asc';
     state.settings[key] = next;
+    saveUiState();
 
     // Update Button UI
     const btn = document.getElementById(isMod ? 'installed-sort-dir-btn' : 'contraptions-sort-dir-btn');
@@ -280,3 +295,22 @@ window.addEventListener('item-installed', (event) => {
         }
     }
 });
+
+// ── Persistence Helpers ─────────────────────────
+export function syncInstalledUi() {
+    console.log("[Installed] Syncing UI to state...");
+    const selector = document.getElementById("installed-sort-type");
+    if (selector) selector.value = state.settings.installedSortBy;
+
+    const btn = document.getElementById("installed-sort-dir-btn");
+    if (btn) btn.textContent = state.settings.installedSortDir === "asc" ? "▲" : "▼";
+}
+
+export function syncContraptionsUi() {
+    console.log("[Contraptions] Syncing UI to state...");
+    const selector = document.getElementById("contraptions-sort-type");
+    if (selector) selector.value = state.settings.contraptionsSortBy;
+
+    const btn = document.getElementById("contraptions-sort-dir-btn");
+    if (btn) btn.textContent = state.settings.contraptionsSortDir === "asc" ? "▲" : "▼";
+}

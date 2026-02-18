@@ -22,6 +22,18 @@ export async function loadSettings() {
             state.settings.gamePath = settings.people_playground_dir || "";
             state.settings.steamcmdPath = settings.steamcmd_dir || "";
 
+            // Persistent UI
+            state.settings.sortType = settings.browse_sort_type || 3;
+            state.settings.sortDays = settings.browse_sort_days || 7;
+            state.settings.browseTags = settings.browse_tags || [];
+            state.settings.collSortType = settings.collections_sort_type || 3;
+            state.settings.collSortDays = settings.collections_sort_days || 7;
+            state.settings.collSortDir = settings.collections_sort_dir || "desc";
+            state.settings.installedSortBy = settings.installed_sort_by || "date";
+            state.settings.installedSortDir = settings.installed_sort_dir || "desc";
+            state.settings.contraptionsSortBy = settings.contraptions_sort_by || "date";
+            state.settings.contraptionsSortDir = settings.contraptions_sort_dir || "desc";
+
             // Populate Inputs
             const apiKeyInput = document.getElementById("api-key");
             if (apiKeyInput) apiKeyInput.value = state.settings.apiKey;
@@ -38,6 +50,25 @@ export async function loadSettings() {
         renderLogs();
     } catch (e) {
         showAlert("settings-alert", "Failed to load settings: " + e);
+    }
+}
+
+export async function saveUiState() {
+    try {
+        await invoke("save_ui_state_cmd", {
+            browseSortType: parseInt(state.settings.sortType),
+            browseSortDays: parseInt(state.settings.sortDays),
+            browseTags: state.settings.browseTags || [],
+            collectionsSortType: parseInt(state.settings.collSortType),
+            collectionsSortDays: parseInt(state.settings.collSortDays),
+            collectionsSortDir: state.settings.collSortDir,
+            installedSortBy: state.settings.installedSortBy,
+            installedSortDir: state.settings.installedSortDir,
+            contraptionsSortBy: state.settings.contraptionsSortBy,
+            contraptionsSortDir: state.settings.contraptionsSortDir
+        });
+    } catch (e) {
+        console.error("[Settings] Failed to save dynamic UI state:", e);
     }
 }
 

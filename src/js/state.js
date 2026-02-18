@@ -16,11 +16,17 @@ export const state = {
         apiKey: "",
         steamcmdPath: "",
         version: "",
-        sortType: 3, // Trending
+        sortType: 3, // Trending/Browse
         sortDays: 7, // Week
-        collSortType: 3, // Trending
+        browseTags: [],
+        browseSortDir: "desc",
+        collSortType: 3,
+        collSortDays: 7,
+        collSortDir: "desc",
         zoomLevel: 250,
-        installedSortDir: "desc", // Default to newest first
+        installedSortBy: "date",
+        installedSortDir: "desc",
+        contraptionsSortBy: "date",
         contraptionsSortDir: "desc"
     }
 };

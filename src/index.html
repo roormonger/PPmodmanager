@@ -126,7 +126,7 @@
                     </div>
                     <div class="filter-group">
                         <label>Over time period</label>
-                        <select id="sort-days">
+                        <select id="sort-days" onchange="searchMods()">
                             <option value="1">Today</option>
                             <option value="7" selected>One Week</option>
                             <option value="30">Thirty Days</option>
@@ -406,7 +406,7 @@
                     </div>
                     <div class="filter-group">
                         <label>Over time period</label>
-                        <select id="coll-sort-days">
+                        <select id="coll-sort-days" onchange="searchCollections()">
                             <option value="1">Today</option>
                             <option value="7" selected>One Week</option>
                             <option value="30">Thirty Days</option>

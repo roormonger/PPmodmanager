@@ -32,6 +32,7 @@ pub fn run() {
             open_browser_url,
             config::get_config,
             config::save_config_cmd,
+            config::save_ui_state_cmd,
             steamapi::search_mods_cmd,
             steamapi::get_mod_details_cmd,
             steamcmd::install_mod,

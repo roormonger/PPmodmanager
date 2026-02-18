@@ -1,9 +1,9 @@
 // Main Entry Point
 import { state, resetSearchState } from "./state.js";
 import { loadSettings, browseForFolder, browseForSteamCMD, saveSettings, checkUpdates, installUpdate, toggleLogs, copyLogs, clearLogs, toggleApiKeyVisibility } from "./tabs/settings.js";
-import { searchMods, openModDetail, closeModDetail, installMod } from "./tabs/browse.js";
-import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder, filterInstalledMods, filterContraptions, toggleLocalSortDir, openRootFolder } from "./tabs/installed.js";
-import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem, installAllCollectionMods } from "./tabs/collections.js";
+import { searchMods, openModDetail, closeModDetail, installMod, initBrowseTab, toggleTagsDropdown, toggleAllTags, toggleSortDir } from "./tabs/browse.js";
+import { loadInstalledMods, loadContraptions, deleteInstalledItem, openModFolder, openContraptionsFolder, filterInstalledMods, filterContraptions, toggleLocalSortDir, openRootFolder, syncInstalledUi, syncContraptionsUi } from "./tabs/installed.js";
+import { searchCollections, openCollectionDetail, closeCollectionDetail, installCollectionItem, installAllCollectionMods, syncCollectionsUi, toggleCollSortDir } from "./tabs/collections.js";
 import { initDownloadQueue } from "./queue.js";
 
 // ── Tab Switching ───────────────────────────────
@@ -66,6 +66,12 @@ async function init() {
         loadContraptions()
     ]);
 
+    // UI Refresh for Browse Tab (Tags, Sort Default UI)
+    initBrowseTab();
+    syncCollectionsUi();
+    syncInstalledUi();
+    syncContraptionsUi();
+
     // Find active tab from HTML if any, default to browse
     switchTab("browse");
 
@@ -99,6 +105,10 @@ function exposeToWindow() {
     window.openModDetail = openModDetail;
     window.closeModDetail = closeModDetail;
     window.installMod = installMod;
+    window.initBrowseTab = initBrowseTab;
+    window.toggleTagsDropdown = toggleTagsDropdown;
+    window.toggleAllTags = toggleAllTags;
+    window.toggleSortDir = toggleSortDir;
 
     // Installed
     window.deleteInstalledItem = deleteInstalledItem;
@@ -117,6 +127,7 @@ function exposeToWindow() {
     window.closeCollectionDetail = closeCollectionDetail;
     window.installCollectionItem = installCollectionItem;
     window.installAllCollectionMods = installAllCollectionMods;
+    window.toggleCollSortDir = toggleCollSortDir;
 
     // Settings
     window.saveSettings = saveSettings;
