@@ -46,6 +46,7 @@ pub struct CachedMetadata {
     pub title: String,
     pub author: String,
     pub preview_url: String,
+    pub size_bytes: u64,
 }
 
 impl Default for Config {

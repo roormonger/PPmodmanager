@@ -101,6 +101,7 @@ async function enrichInstalledMods(mods) {
                 enriched.steam_title = cached.title;
                 enriched.steam_image = cached.preview_url;
                 enriched.author = cached.author;
+                enriched.file_size = cached.size_bytes; // Use cached size if Steam API is skipped
             } else {
                 missingIds.push(mod.ugc_id);
             }
@@ -126,7 +127,8 @@ async function enrichInstalledMods(mods) {
                     cache[enriched.ugc_id] = {
                         title: detail.title,
                         author: enriched.author,
-                        preview_url: detail.preview_url
+                        preview_url: detail.preview_url,
+                        size_bytes: parseInt(detail.file_size || "0")
                     };
                 }
             }
@@ -155,7 +157,8 @@ function renderInstalledMods(mods, type) {
 
         const title = mod.steam_title || mod.title || mod.name || mod.folder_name;
         const author = mod.author || "Unknown";
-        const size = formatBytes(mod.file_size || 0);
+        // Use local folder_size first, then Steam file_size, then 0
+        const size = formatBytes(mod.folder_size || mod.file_size || 0);
         // Default thumb
         let thumbSrc = mod.steam_image || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23222' %3E%3Crect width='64' height='64' /%3E%3C/svg%3E";
 
