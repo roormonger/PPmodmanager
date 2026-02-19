@@ -219,7 +219,7 @@ export async function checkUpdates() {
             }
             createToast("update-avail", "success", "Update Available", `Version ${update.version} is ready.`);
         } else {
-            if (status) status.textContent = `Up to date (v${state.settings.version || "0.6.5"})`;
+            if (status) status.textContent = `Up to date (v${state.settings.version || "0.6.7"})`;
             if (btn) {
                 btn.textContent = "Check for Updates";
                 btn.disabled = false;
@@ -227,7 +227,7 @@ export async function checkUpdates() {
             createToast("no-update", "info", "Up to date", "You are on the latest version.", 2000);
         }
     } catch (e) {
-        if (status) status.textContent = `v${state.settings.version || "0.6.5"} (Check failed)`;
+        if (status) status.textContent = `v${state.settings.version || "0.6.7"} (Check failed)`;
         if (btn) {
             btn.textContent = "Check for Updates";
             btn.disabled = false;
